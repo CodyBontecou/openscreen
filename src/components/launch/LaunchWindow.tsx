@@ -309,7 +309,7 @@ export function LaunchWindow() {
 					{/* Record/Stop group */}
 					<button
 						className={`flex items-center gap-0.5 rounded-full p-2 transition-colors duration-150 ${styles.electronNoDrag} ${
-							recording ? "animate-record-pulse bg-red-500/10" : "bg-white/5 hover:bg-white/[0.08]"
+							recording ? "bg-red-500/10" : "bg-white/5 hover:bg-white/[0.08]"
 						}`}
 						onClick={hasSelectedSource ? toggleRecording : openSourceSelector}
 						disabled={!hasSelectedSource && !recording}
