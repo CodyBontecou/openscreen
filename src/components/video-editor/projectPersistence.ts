@@ -323,7 +323,7 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 	const cropHeight = clamp(rawCropHeight, 0.01, 1 - cropY);
 
 	return {
-		wallpaper: typeof editor.wallpaper === "string" ? editor.wallpaper : WALLPAPER_PATHS[0],
+		wallpaper: typeof editor.wallpaper === "string" ? editor.wallpaper : "#000000",
 		shadowIntensity: typeof editor.shadowIntensity === "number" ? editor.shadowIntensity : 0,
 		showBlur: typeof editor.showBlur === "boolean" ? editor.showBlur : false,
 		motionBlurAmount: isFiniteNumber(editor.motionBlurAmount)
@@ -334,7 +334,7 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 					: 0
 				: 0,
 		borderRadius: typeof editor.borderRadius === "number" ? editor.borderRadius : 0,
-		padding: isFiniteNumber(editor.padding) ? clamp(editor.padding, 0, 100) : 50,
+		padding: isFiniteNumber(editor.padding) ? clamp(editor.padding, 0, 100) : 0,
 		cropRegion: {
 			x: cropX,
 			y: cropY,
