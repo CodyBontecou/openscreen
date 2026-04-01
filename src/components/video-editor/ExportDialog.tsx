@@ -1,5 +1,5 @@
-import { Download, Loader2, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { CheckCircle2, Download, Loader2, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useScopedT } from "@/contexts/I18nContext";
 import type { ExportProgress } from "@/lib/exporter";
@@ -55,6 +55,39 @@ export function ExportDialog({
 		}
 	}, [isExporting, progress, error, onClose]);
 
+	// These hooks MUST be before the early return to satisfy Rules of Hooks.
+	const isFinalizing = progress?.phase === "finalizing";
+	const finalizingPhase = progress?.finalizingPhase;
+	const finalizingProgress = progress?.finalizingProgress;
+	const finalizingElapsedSec = progress?.finalizingElapsedSec ?? 0;
+
+	// Tick elapsed time locally so the counter updates every second even when
+	// no new progress events arrive (e.g. during the real-time audio render).
+	const [localElapsed, setLocalElapsed] = useState(0);
+	const elapsedIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+	useEffect(() => {
+		if (isFinalizing && isExporting) {
+			if (!elapsedIntervalRef.current) {
+				setLocalElapsed(finalizingElapsedSec);
+				elapsedIntervalRef.current = setInterval(() => {
+					setLocalElapsed((s) => s + 1);
+				}, 1000);
+			}
+		} else {
+			if (elapsedIntervalRef.current) {
+				clearInterval(elapsedIntervalRef.current);
+				elapsedIntervalRef.current = null;
+			}
+			setLocalElapsed(0);
+		}
+		return () => {
+			if (elapsedIntervalRef.current) {
+				clearInterval(elapsedIntervalRef.current);
+				elapsedIntervalRef.current = null;
+			}
+		};
+	}, [isFinalizing, isExporting, finalizingElapsedSec]);
+
 	if (!isOpen) return null;
 
 	const formatLabel = exportFormat === "gif" ? "GIF" : "Video";
@@ -62,8 +95,23 @@ export function ExportDialog({
 	// Determine if we're in the compiling phase (frames done but still exporting)
 	const isCompiling =
 		isExporting && progress && progress.percentage >= 100 && exportFormat === "gif";
-	const isFinalizing = progress?.phase === "finalizing";
 	const renderProgress = progress?.renderProgress;
+
+	// Map finalizingPhase to a human-readable label
+	const getFinalizingPhaseInfo = () => {
+		switch (finalizingPhase) {
+			case "flushing":
+				return { label: "Flushing encoder" };
+			case "processing-audio":
+				return { label: "Encoding audio" };
+			case "rendering-audio":
+				return { label: "Rendering audio (real-time)" };
+			case "writing":
+				return { label: "Writing file" };
+			default:
+				return { label: "Finalizing..." };
+		}
+	};
 
 	// Get status message based on phase
 	const getStatusMessage = () => {
@@ -168,60 +216,54 @@ export function ExportDialog({
 
 				{isExporting && progress && (
 					<div className="space-y-6">
-						<div className="space-y-2">
-							<div className="flex justify-between text-xs font-medium text-slate-400 uppercase tracking-wider">
-								<span>
-									{isCompiling || isFinalizing
-										? t("export.compiling")
-										: t("export.renderingFrames")}
-								</span>
-								<span className="font-mono text-slate-200">
-									{isCompiling || isFinalizing ? (
-										renderProgress !== undefined && renderProgress > 0 ? (
-											`${renderProgress}%`
+						{/* ── Rendering-frames progress bar ── */}
+						{!isFinalizing && (
+							<div className="space-y-2">
+								<div className="flex justify-between text-xs font-medium text-slate-400 uppercase tracking-wider">
+									<span>{isCompiling ? t("export.compiling") : t("export.renderingFrames")}</span>
+									<span className="font-mono text-slate-200">
+										{isCompiling ? (
+											renderProgress !== undefined && renderProgress > 0 ? (
+												`${renderProgress}%`
+											) : (
+												<span className="flex items-center gap-2">
+													<Loader2 className="w-3 h-3 animate-spin" />
+													{t("export.processing")}
+												</span>
+											)
 										) : (
-											<span className="flex items-center gap-2">
-												<Loader2 className="w-3 h-3 animate-spin" />
-												{t("export.processing")}
-											</span>
+											`${progress.percentage.toFixed(0)}%`
+										)}
+									</span>
+								</div>
+								<div className="h-2 bg-white/5 rounded-full overflow-hidden border border-white/5">
+									{isCompiling ? (
+										renderProgress !== undefined && renderProgress > 0 ? (
+											<div
+												className="h-full bg-[#34B27B] shadow-[0_0_10px_rgba(52,178,123,0.3)] transition-all duration-300 ease-out"
+												style={{ width: `${renderProgress}%` }}
+											/>
+										) : (
+											<IndeterminateBar />
 										)
 									) : (
-										`${progress.percentage.toFixed(0)}%`
-									)}
-								</span>
-							</div>
-							<div className="h-2 bg-white/5 rounded-full overflow-hidden border border-white/5">
-								{isCompiling || isFinalizing ? (
-									// Show render progress if available, otherwise animated indeterminate bar
-									renderProgress !== undefined && renderProgress > 0 ? (
 										<div
 											className="h-full bg-[#34B27B] shadow-[0_0_10px_rgba(52,178,123,0.3)] transition-all duration-300 ease-out"
-											style={{ width: `${renderProgress}%` }}
+											style={{ width: `${Math.min(progress.percentage, 100)}%` }}
 										/>
-									) : (
-										<div className="h-full w-full relative overflow-hidden">
-											<div
-												className="absolute h-full w-1/3 bg-[#34B27B] shadow-[0_0_10px_rgba(52,178,123,0.3)]"
-												style={{
-													animation: "indeterminate 1.5s ease-in-out infinite",
-												}}
-											/>
-											<style>{`
-                        @keyframes indeterminate {
-                          0% { transform: translateX(-100%); }
-                          100% { transform: translateX(400%); }
-                        }
-                      `}</style>
-										</div>
-									)
-								) : (
-									<div
-										className="h-full bg-[#34B27B] shadow-[0_0_10px_rgba(52,178,123,0.3)] transition-all duration-300 ease-out"
-										style={{ width: `${Math.min(progress.percentage, 100)}%` }}
-									/>
-								)}
+									)}
+								</div>
 							</div>
-						</div>
+						)}
+
+						{/* ── Finalizing steps (MP4 only) ── */}
+						{isFinalizing && exportFormat === "mp4" && (
+							<FinalizingSteps
+								finalizingPhase={finalizingPhase}
+								finalizingProgress={finalizingProgress}
+								elapsedSec={localElapsed}
+							/>
+						)}
 
 						<div className="grid grid-cols-2 gap-4">
 							<div className="bg-white/5 rounded-xl p-3 border border-white/5">
@@ -230,7 +272,7 @@ export function ExportDialog({
 								</div>
 								<div className="text-slate-200 font-medium text-sm">
 									{isFinalizing && exportFormat === "mp4"
-										? t("export.finalizing")
+										? getFinalizingPhaseInfo().label
 										: isCompiling || isFinalizing
 											? t("export.compilingStatus")
 											: formatLabel}
@@ -238,10 +280,12 @@ export function ExportDialog({
 							</div>
 							<div className="bg-white/5 rounded-xl p-3 border border-white/5">
 								<div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">
-									{t("export.frames")}
+									{isFinalizing ? "Elapsed" : t("export.frames")}
 								</div>
-								<div className="text-slate-200 font-medium text-sm">
-									{progress.currentFrame} / {progress.totalFrames}
+								<div className="text-slate-200 font-medium text-sm font-mono">
+									{isFinalizing
+										? formatElapsed(localElapsed)
+										: `${progress.currentFrame} / ${progress.totalFrames}`}
 								</div>
 							</div>
 						</div>
@@ -269,5 +313,130 @@ export function ExportDialog({
 				)}
 			</div>
 		</>
+	);
+}
+
+// ─── Helper: indeterminate shimmer bar ────────────────────────────────────────────────────────────────────────────────────
+
+function IndeterminateBar() {
+	return (
+		<div className="h-full w-full relative overflow-hidden">
+			<div
+				className="absolute h-full w-1/3 bg-[#34B27B] shadow-[0_0_10px_rgba(52,178,123,0.3)]"
+				style={{ animation: "indeterminate 1.5s ease-in-out infinite" }}
+			/>
+			<style>{`
+				@keyframes indeterminate {
+					0% { transform: translateX(-100%); }
+					100% { transform: translateX(400%); }
+				}
+			`}</style>
+		</div>
+	);
+}
+
+// ─── Helper: format elapsed seconds as m:ss ────────────────────────────────────────────────────────────────────────────
+function formatElapsed(sec: number): string {
+	const m = Math.floor(sec / 60);
+	const s = sec % 60;
+	return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+// ─── Finalizing-steps panel ───────────────────────────────────────────────────────────────────────────────────────────
+type FinalizingPhaseKey = "flushing" | "processing-audio" | "rendering-audio" | "writing";
+
+const FINALIZE_STEPS: { key: FinalizingPhaseKey; label: string }[] = [
+	{ key: "flushing", label: "Flush encoder" },
+	{ key: "processing-audio", label: "Encode audio" },
+	{ key: "rendering-audio", label: "Render audio" },
+	{ key: "writing", label: "Write file" },
+];
+
+function FinalizingSteps({
+	finalizingPhase,
+	finalizingProgress,
+	elapsedSec,
+}: {
+	finalizingPhase: FinalizingPhaseKey | undefined;
+	finalizingProgress: number | undefined;
+	elapsedSec: number;
+}) {
+	const phaseOrder: FinalizingPhaseKey[] = [
+		"flushing",
+		"processing-audio",
+		"rendering-audio",
+		"writing",
+	];
+	const currentIdx = finalizingPhase ? phaseOrder.indexOf(finalizingPhase) : -1;
+
+	// Only show steps that are actually reachable given the current phase seen.
+	// We skip audio steps that never appeared (e.g. no audio track).
+	const visibleSteps = FINALIZE_STEPS.filter((step) => {
+		const idx = phaseOrder.indexOf(step.key);
+		// Always show completed/current. For future audio steps, only show if
+		// we haven't passed them yet (they could still appear).
+		return idx <= currentIdx + 1;
+	});
+
+	return (
+		<div className="space-y-3">
+			{/* Step list */}
+			<div className="flex flex-col gap-1.5">
+				{visibleSteps.map((step) => {
+					const idx = phaseOrder.indexOf(step.key);
+					const isDone = idx < currentIdx;
+					const isActive = idx === currentIdx;
+					return (
+						<div key={step.key} className="flex items-center gap-2.5">
+							<span className="w-4 h-4 flex-shrink-0 flex items-center justify-center">
+								{isDone ? (
+									<CheckCircle2 className="w-4 h-4 text-[#34B27B]" />
+								) : isActive ? (
+									<Loader2 className="w-4 h-4 text-[#34B27B] animate-spin" />
+								) : (
+									<span className="w-3 h-3 rounded-full border border-white/20" />
+								)}
+							</span>
+							<span
+								className={`text-sm ${
+									isDone
+										? "text-slate-500 line-through"
+										: isActive
+											? "text-slate-200 font-medium"
+											: "text-slate-600"
+								}`}
+							>
+								{step.label}
+							</span>
+							{isActive && finalizingProgress !== undefined && (
+								<span className="ml-auto text-xs font-mono text-[#34B27B]">
+									{Math.round(finalizingProgress)}%
+								</span>
+							)}
+						</div>
+					);
+				})}
+			</div>
+
+			{/* Progress bar for the active step */}
+			<div className="h-1.5 bg-white/5 rounded-full overflow-hidden border border-white/5">
+				{finalizingProgress !== undefined ? (
+					<div
+						className="h-full bg-[#34B27B] shadow-[0_0_8px_rgba(52,178,123,0.3)] transition-all duration-300 ease-out"
+						style={{ width: `${Math.min(finalizingProgress, 100)}%` }}
+					/>
+				) : (
+					<IndeterminateBar />
+				)}
+			</div>
+
+			{/* Hint for long real-time audio rendering */}
+			{finalizingPhase === "rendering-audio" && elapsedSec >= 3 && (
+				<p className="text-xs text-slate-500 leading-relaxed">
+					⚠️ Audio is being rendered in real-time to preserve pitch. This step takes as long as the
+					video itself.
+				</p>
+			)}
+		</div>
 	);
 }

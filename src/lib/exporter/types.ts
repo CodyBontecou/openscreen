@@ -6,6 +6,8 @@ export interface ExportConfig {
 	codec?: string;
 }
 
+export type FinalizingPhase = "flushing" | "processing-audio" | "rendering-audio" | "writing";
+
 export interface ExportProgress {
 	currentFrame: number;
 	totalFrames: number;
@@ -13,6 +15,12 @@ export interface ExportProgress {
 	estimatedTimeRemaining: number; // in seconds
 	phase?: "extracting" | "finalizing"; // Phase of export
 	renderProgress?: number; // 0-100, progress of GIF rendering phase
+	/** Sub-phase detail while phase === "finalizing" */
+	finalizingPhase?: FinalizingPhase;
+	/** 0-100 progress for the current finalizingPhase (undefined = indeterminate) */
+	finalizingProgress?: number;
+	/** Elapsed wall-clock seconds since finalization started */
+	finalizingElapsedSec?: number;
 }
 
 export interface ExportResult {

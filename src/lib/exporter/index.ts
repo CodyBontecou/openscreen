@@ -9,6 +9,7 @@ export type {
 	ExportQuality,
 	ExportResult,
 	ExportSettings,
+	FinalizingPhase,
 	GifExportConfig,
 	GifFrameRate,
 	GifSizePreset,

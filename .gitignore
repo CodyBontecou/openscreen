@@ -30,3 +30,6 @@ release/**
 # Playwright
 test-results
 playwright-report/
+# Shoreman dev server
+dev.log
+.shoreman.pid

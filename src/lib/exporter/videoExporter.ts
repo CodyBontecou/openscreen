@@ -296,6 +296,25 @@ export class VideoExporter {
 			webcamDecoder?.cancel();
 			await webcamDecodePromise;
 
+			const finalizingStartTime = Date.now();
+			const reportFinalizing = (
+				finalizingPhase: ExportProgress["finalizingPhase"],
+				finalizingProgress?: number,
+			) => {
+				this.reportProgress({
+					currentFrame: totalFrames,
+					totalFrames,
+					percentage: 100,
+					estimatedTimeRemaining: 0,
+					phase: "finalizing",
+					finalizingPhase,
+					finalizingProgress,
+					finalizingElapsedSec: Math.round((Date.now() - finalizingStartTime) / 1000),
+				});
+			};
+
+			reportFinalizing("flushing");
+
 			if (this.encoder && this.encoder.state === "configured") {
 				await this.withTimeout(
 					this.encoder.flush(),
@@ -312,14 +331,6 @@ export class VideoExporter {
 
 			await Promise.all(this.muxingPromises);
 
-			this.reportProgress({
-				currentFrame: totalFrames,
-				totalFrames,
-				percentage: 100,
-				estimatedTimeRemaining: 0,
-				phase: "finalizing",
-			});
-
 			if (hasAudio && !this.cancelled) {
 				const demuxer = streamingDecoder.getDemuxer();
 				if (demuxer) {
@@ -332,10 +343,12 @@ export class VideoExporter {
 						this.config.trimRegions,
 						this.config.speedRegions,
 						readEndSec,
+						(phase, progress) => reportFinalizing(phase, progress),
 					);
 				}
 			}
 
+			reportFinalizing("writing");
 			const blob = await muxer.finalize();
 			return { success: true, blob };
 		} finally {

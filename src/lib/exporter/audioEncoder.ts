@@ -6,6 +6,11 @@ const AUDIO_BITRATE = 128_000;
 const DECODE_BACKPRESSURE_LIMIT = 20;
 const MIN_SPEED_REGION_DELTA_MS = 0.0001;
 
+export type AudioProgressCallback = (
+	phase: "processing-audio" | "rendering-audio",
+	progress: number,
+) => void;
+
 export class AudioProcessor {
 	private cancelled = false;
 
@@ -21,6 +26,7 @@ export class AudioProcessor {
 		trimRegions?: TrimRegion[],
 		speedRegions?: SpeedRegion[],
 		readEndSec?: number,
+		onProgress?: AudioProgressCallback,
 	): Promise<void> {
 		const sortedTrims = trimRegions ? [...trimRegions].sort((a, b) => a.startMs - b.startMs) : [];
 		const sortedSpeedRegions = speedRegions
@@ -35,6 +41,7 @@ export class AudioProcessor {
 				videoUrl,
 				sortedTrims,
 				sortedSpeedRegions,
+				onProgress,
 			);
 			if (!this.cancelled) {
 				await this.muxRenderedAudioBlob(renderedAudioBlob, muxer);
@@ -43,7 +50,7 @@ export class AudioProcessor {
 		}
 
 		// No speed edits: keep the original demux/decode/encode path with trim timestamp remap.
-		await this.processTrimOnlyAudio(demuxer, muxer, sortedTrims, readEndSec);
+		await this.processTrimOnlyAudio(demuxer, muxer, sortedTrims, readEndSec, onProgress);
 	}
 
 	// Legacy trim-only path. This is still used for projects without speed regions.
@@ -52,6 +59,7 @@ export class AudioProcessor {
 		muxer: VideoMuxer,
 		sortedTrims: TrimRegion[],
 		readEndSec?: number,
+		onProgress?: AudioProgressCallback,
 	): Promise<void> {
 		let audioConfig: AudioDecoderConfig;
 		try {
@@ -119,6 +127,8 @@ export class AudioProcessor {
 			return;
 		}
 
+		onProgress?.("processing-audio", 33);
+
 		// Phase 2: Re-encode with timestamps adjusted for trim gaps
 		const encodedChunks: { chunk: EncodedAudioChunk; meta?: EncodedAudioChunkMetadata }[] = [];
 
@@ -170,11 +180,19 @@ export class AudioProcessor {
 			encoder.close();
 		}
 
+		onProgress?.("processing-audio", 66);
+
 		// Phase 3: Flush encoded chunks to muxer
-		for (const { chunk, meta } of encodedChunks) {
+		const totalChunks = encodedChunks.length;
+		for (let i = 0; i < totalChunks; i++) {
+			const { chunk, meta } = encodedChunks[i];
 			if (this.cancelled) break;
 			await muxer.addAudioChunk(chunk, meta);
+			if (i % 10 === 0) {
+				onProgress?.("processing-audio", 66 + Math.round((i / totalChunks) * 33));
+			}
 		}
+		onProgress?.("processing-audio", 100);
 
 		console.log(
 			`[AudioProcessor] Processed ${decodedFrames.length} audio frames, encoded ${encodedChunks.length} chunks`,
@@ -187,6 +205,7 @@ export class AudioProcessor {
 		videoUrl: string,
 		trimRegions: TrimRegion[],
 		speedRegions: SpeedRegion[],
+		onProgress?: AudioProgressCallback,
 	): Promise<Blob> {
 		const media = document.createElement("audio");
 		media.src = videoUrl;
@@ -247,6 +266,11 @@ export class AudioProcessor {
 						cleanup();
 						resolve();
 						return;
+					}
+
+					if (media.duration > 0) {
+						const rawProgress = (media.currentTime / media.duration) * 100;
+						onProgress?.("rendering-audio", Math.min(99, rawProgress));
 					}
 
 					const currentTimeMs = media.currentTime * 1000;
