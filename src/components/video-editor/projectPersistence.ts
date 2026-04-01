@@ -14,6 +14,7 @@ import {
 	DEFAULT_WEBCAM_LAYOUT_PRESET,
 	DEFAULT_WEBCAM_POSITION,
 	DEFAULT_ZOOM_DEPTH,
+	type PreviewQuality,
 	type SpeedRegion,
 	type TrimRegion,
 	type WebcamLayoutPreset,
@@ -50,6 +51,7 @@ export interface ProjectEditorState {
 	gifFrameRate: GifFrameRate;
 	gifLoop: boolean;
 	gifSizePreset: GifSizePreset;
+	previewQuality: PreviewQuality;
 }
 
 export interface EditorProjectData {
@@ -365,7 +367,7 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 		exportQuality:
 			editor.exportQuality === "medium" || editor.exportQuality === "source"
 				? editor.exportQuality
-				: "good",
+				: "source",
 		exportFormat: editor.exportFormat === "gif" ? "gif" : "mp4",
 		gifFrameRate:
 			editor.gifFrameRate === 15 ||
@@ -381,6 +383,10 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 			editor.gifSizePreset === "original"
 				? editor.gifSizePreset
 				: "medium",
+		previewQuality:
+			editor.previewQuality === "balanced" || editor.previewQuality === "performance"
+				? editor.previewQuality
+				: "source",
 	};
 }
 

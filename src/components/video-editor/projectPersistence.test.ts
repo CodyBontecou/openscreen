@@ -45,6 +45,7 @@ describe("projectPersistence media compatibility", () => {
 				gifFrameRate: 15,
 				gifLoop: true,
 				gifSizePreset: "medium",
+				previewQuality: "source",
 			},
 		);
 

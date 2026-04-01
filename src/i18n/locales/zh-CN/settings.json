@@ -26,7 +26,11 @@
 		"off": "关",
 		"shadow": "阴影",
 		"roundness": "圆角",
-		"padding": "内边距"
+		"padding": "内边距",
+		"previewQuality": "预览质量",
+		"previewQualityPerformance": "流畅",
+		"previewQualityBalanced": "均衡",
+		"previewQualitySource": "源质量"
 	},
 	"background": {
 		"title": "背景",

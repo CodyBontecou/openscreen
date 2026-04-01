@@ -26,7 +26,11 @@
 		"off": "off",
 		"shadow": "Shadow",
 		"roundness": "Roundness",
-		"padding": "Padding"
+		"padding": "Padding",
+		"previewQuality": "Preview Quality",
+		"previewQualityPerformance": "Fast",
+		"previewQualityBalanced": "Balanced",
+		"previewQualitySource": "Source"
 	},
 	"background": {
 		"title": "Background",

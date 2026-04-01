@@ -33,6 +33,7 @@ import {
 import { AnnotationOverlay } from "./AnnotationOverlay";
 import {
 	type AnnotationRegion,
+	type PreviewQuality,
 	type SpeedRegion,
 	type TrimRegion,
 	ZOOM_DEPTH_SCALES,
@@ -72,6 +73,7 @@ interface VideoPlaybackProps {
 	onPlayStateChange: (playing: boolean) => void;
 	onError: (error: string) => void;
 	wallpaper?: string;
+	previewQuality?: PreviewQuality;
 	zoomRegions: ZoomRegion[];
 	selectedZoomId: string | null;
 	onSelectZoom: (id: string | null) => void;
@@ -120,6 +122,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			onPlayStateChange,
 			onError,
 			wallpaper,
+			previewQuality = "source",
 			zoomRegions,
 			selectedZoomId,
 			onSelectZoom,
@@ -194,6 +197,52 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const onTimeUpdateRef = useRef(onTimeUpdate);
 		const onPlayStateChangeRef = useRef(onPlayStateChange);
 		const videoReadyRafRef = useRef<number | null>(null);
+
+		const computePreviewResolution = useCallback(() => {
+			const dpr = window.devicePixelRatio || 1;
+
+			if (previewQuality === "performance") {
+				return Math.max(0.75, Math.min(1, dpr));
+			}
+
+			if (previewQuality === "balanced") {
+				return Math.max(1, dpr);
+			}
+
+			const container = containerRef.current;
+			const videoElement = videoRef.current;
+			if (!container || !videoElement || !videoElement.videoWidth || !videoElement.videoHeight) {
+				return Math.max(1, dpr);
+			}
+
+			const containerWidth = Math.max(1, container.clientWidth);
+			const containerHeight = Math.max(1, container.clientHeight);
+			const sourceScale = Math.max(
+				videoElement.videoWidth / containerWidth,
+				videoElement.videoHeight / containerHeight,
+			);
+
+			return Math.min(4, Math.max(dpr, sourceScale, 1));
+		}, [previewQuality]);
+
+		const applyRendererResolution = useCallback(() => {
+			const app = appRef.current;
+			const container = containerRef.current;
+			if (!app || !container) return;
+
+			const width = Math.max(1, Math.round(container.clientWidth));
+			const height = Math.max(1, Math.round(container.clientHeight));
+			const nextResolution = computePreviewResolution();
+
+			if (Math.abs(app.renderer.resolution - nextResolution) > 0.01) {
+				app.renderer.resolution = nextResolution;
+			}
+			app.renderer.resize(width, height);
+
+			if (blurFilterRef.current) {
+				blurFilterRef.current.resolution = app.renderer.resolution;
+			}
+		}, [computePreviewResolution]);
 
 		const clampFocusToStage = useCallback((focus: ZoomFocus, depth: ZoomDepth) => {
 			return clampFocusToStageUtil(focus, depth, stageSizeRef.current);
@@ -581,6 +630,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			}
 
 			const observer = new ResizeObserver(() => {
+				applyRendererResolution();
 				layoutVideoContent();
 			});
 
@@ -588,7 +638,15 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			return () => {
 				observer.disconnect();
 			};
-		}, [pixiReady, videoReady, layoutVideoContent]);
+		}, [pixiReady, videoReady, layoutVideoContent, applyRendererResolution]);
+
+		useEffect(() => {
+			if (!pixiReady) return;
+			applyRendererResolution();
+			if (videoReady) {
+				layoutVideoContentRef.current?.();
+			}
+		}, [pixiReady, videoReady, previewQuality, applyRendererResolution]);
 
 		useEffect(() => {
 			if (!pixiReady || !videoReady) return;

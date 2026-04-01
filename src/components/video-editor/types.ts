@@ -134,6 +134,8 @@ export const DEFAULT_CROP_REGION: CropRegion = {
 
 export type PlaybackSpeed = 0.25 | 0.5 | 0.75 | 1.25 | 1.5 | 1.75 | 2;
 
+export type PreviewQuality = "source" | "balanced" | "performance";
+
 export interface SpeedRegion {
 	id: string;
 	startMs: number;

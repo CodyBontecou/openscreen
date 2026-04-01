@@ -26,7 +26,11 @@
 		"off": "desactivado",
 		"shadow": "Sombra",
 		"roundness": "Redondez",
-		"padding": "Relleno"
+		"padding": "Relleno",
+		"previewQuality": "Calidad de vista previa",
+		"previewQualityPerformance": "Rápida",
+		"previewQualityBalanced": "Equilibrada",
+		"previewQualitySource": "Fuente"
 	},
 	"background": {
 		"title": "Fondo",

@@ -53,6 +53,7 @@ import {
 	DEFAULT_ZOOM_DEPTH,
 	type FigureData,
 	type PlaybackSpeed,
+	type PreviewQuality,
 	type SpeedRegion,
 	type TrimRegion,
 	type ZoomDepth,
@@ -108,7 +109,8 @@ export default function VideoEditor() {
 	const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
 	const [exportError, setExportError] = useState<string | null>(null);
 	const [showExportDialog, setShowExportDialog] = useState(false);
-	const [exportQuality, setExportQuality] = useState<ExportQuality>("good");
+	const [exportQuality, setExportQuality] = useState<ExportQuality>("source");
+	const [previewQuality, setPreviewQuality] = useState<PreviewQuality>("source");
 	const [exportFormat, setExportFormat] = useState<ExportFormat>("mp4");
 	const [gifFrameRate, setGifFrameRate] = useState<GifFrameRate>(15);
 	const [gifLoop, setGifLoop] = useState(true);
@@ -199,6 +201,7 @@ export default function VideoEditor() {
 				webcamPosition: normalizedEditor.webcamPosition,
 			});
 			setExportQuality(normalizedEditor.exportQuality);
+			setPreviewQuality(normalizedEditor.previewQuality);
 			setExportFormat(normalizedEditor.exportFormat);
 			setGifFrameRate(normalizedEditor.gifFrameRate);
 			setGifLoop(normalizedEditor.gifLoop);
@@ -267,6 +270,7 @@ export default function VideoEditor() {
 				webcamLayoutPreset,
 				webcamPosition,
 				exportQuality,
+				previewQuality,
 				exportFormat,
 				gifFrameRate,
 				gifLoop,
@@ -290,6 +294,7 @@ export default function VideoEditor() {
 		webcamLayoutPreset,
 		webcamPosition,
 		exportQuality,
+		previewQuality,
 		exportFormat,
 		gifFrameRate,
 		gifLoop,
@@ -383,6 +388,7 @@ export default function VideoEditor() {
 				webcamLayoutPreset,
 				webcamPosition,
 				exportQuality,
+				previewQuality,
 				exportFormat,
 				gifFrameRate,
 				gifLoop,
@@ -437,6 +443,7 @@ export default function VideoEditor() {
 			webcamLayoutPreset,
 			webcamPosition,
 			exportQuality,
+			previewQuality,
 			exportFormat,
 			gifFrameRate,
 			gifLoop,
@@ -1483,6 +1490,7 @@ export default function VideoEditor() {
 											onPlayStateChange={setIsPlaying}
 											onError={setError}
 											wallpaper={wallpaper}
+											previewQuality={previewQuality}
 											zoomRegions={zoomRegions}
 											selectedZoomId={selectedZoomId}
 											onSelectZoom={handleSelectZoom}
@@ -1621,6 +1629,8 @@ export default function VideoEditor() {
 						videoElement={videoPlaybackRef.current?.video || null}
 						exportQuality={exportQuality}
 						onExportQualityChange={setExportQuality}
+						previewQuality={previewQuality}
+						onPreviewQualityChange={setPreviewQuality}
 						exportFormat={exportFormat}
 						onExportFormatChange={setExportFormat}
 						gifFrameRate={gifFrameRate}

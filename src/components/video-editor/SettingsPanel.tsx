@@ -50,6 +50,7 @@ import type {
 	CropRegion,
 	FigureData,
 	PlaybackSpeed,
+	PreviewQuality,
 	WebcamLayoutPreset,
 	ZoomDepth,
 } from "./types";
@@ -116,6 +117,8 @@ interface SettingsPanelProps {
 	videoElement?: HTMLVideoElement | null;
 	exportQuality?: ExportQuality;
 	onExportQualityChange?: (quality: ExportQuality) => void;
+	previewQuality?: PreviewQuality;
+	onPreviewQualityChange?: (quality: PreviewQuality) => void;
 	// Export format settings
 	exportFormat?: ExportFormat;
 	onExportFormatChange?: (format: ExportFormat) => void;
@@ -183,8 +186,10 @@ export function SettingsPanel({
 	onCropChange,
 	aspectRatio,
 	videoElement,
-	exportQuality = "good",
+	exportQuality = "source",
 	onExportQualityChange,
+	previewQuality = "source",
+	onPreviewQualityChange,
 	exportFormat = "mp4",
 	onExportFormatChange,
 	gifFrameRate = 15,
@@ -645,6 +650,46 @@ export function SettingsPanel({
 										onCheckedChange={onBlurChange}
 										className="data-[state=checked]:bg-[#34B27B] scale-90"
 									/>
+								</div>
+								<div className="p-2 rounded-lg bg-white/5 border border-white/5">
+									<div className="text-[10px] font-medium text-slate-300 mb-1.5">
+										{t("effects.previewQuality")}
+									</div>
+									<div className="bg-black/20 border border-white/10 p-0.5 w-full grid grid-cols-3 h-7 rounded-lg">
+										<button
+											onClick={() => onPreviewQualityChange?.("performance")}
+											className={cn(
+												"rounded-md transition-all text-[10px] font-medium",
+												previewQuality === "performance"
+													? "bg-white text-black"
+													: "text-slate-400 hover:text-slate-200",
+											)}
+										>
+											{t("effects.previewQualityPerformance")}
+										</button>
+										<button
+											onClick={() => onPreviewQualityChange?.("balanced")}
+											className={cn(
+												"rounded-md transition-all text-[10px] font-medium",
+												previewQuality === "balanced"
+													? "bg-white text-black"
+													: "text-slate-400 hover:text-slate-200",
+											)}
+										>
+											{t("effects.previewQualityBalanced")}
+										</button>
+										<button
+											onClick={() => onPreviewQualityChange?.("source")}
+											className={cn(
+												"rounded-md transition-all text-[10px] font-medium",
+												previewQuality === "source"
+													? "bg-white text-black"
+													: "text-slate-400 hover:text-slate-200",
+											)}
+										>
+											{t("effects.previewQualitySource")}
+										</button>
+									</div>
 								</div>
 							</div>
 
