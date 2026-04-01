@@ -71,6 +71,41 @@ export function isPortraitAspectRatio(aspectRatio: AspectRatio): boolean {
 	return getAspectRatioValue(aspectRatio) < 1;
 }
 
+/**
+ * Computes a centered crop region that matches the given aspect ratio.
+ * Returns normalized {x, y, width, height} (0–1) values.
+ * For "native", returns the full frame (no crop).
+ */
+export function computeCropForAspectRatio(
+	videoWidth: number,
+	videoHeight: number,
+	targetAspectRatio: AspectRatio,
+): { x: number; y: number; width: number; height: number } {
+	if (targetAspectRatio === "native") {
+		return { x: 0, y: 0, width: 1, height: 1 };
+	}
+
+	const sourceAspect = videoWidth / videoHeight;
+	const targetAspect = getAspectRatioValue(targetAspectRatio);
+
+	if (Math.abs(sourceAspect - targetAspect) < 0.001) {
+		// Already the same ratio — no crop needed
+		return { x: 0, y: 0, width: 1, height: 1 };
+	}
+
+	if (targetAspect < sourceAspect) {
+		// Target is more portrait: keep full height, crop left & right
+		const cropWidth = targetAspect / sourceAspect;
+		const cropX = (1 - cropWidth) / 2;
+		return { x: cropX, y: 0, width: cropWidth, height: 1 };
+	} else {
+		// Target is more landscape: keep full width, crop top & bottom
+		const cropHeight = sourceAspect / targetAspect;
+		const cropY = (1 - cropHeight) / 2;
+		return { x: 0, y: cropY, width: 1, height: cropHeight };
+	}
+}
+
 export function formatAspectRatioForCSS(aspectRatio: AspectRatio, nativeRatio?: number): string {
 	if (aspectRatio === "native") return String(nativeRatio ?? 16 / 9);
 	return aspectRatio.replace(":", "/");

@@ -23,6 +23,7 @@ import {
 import type { ProjectMedia } from "@/lib/recordingSession";
 import { matchesShortcut } from "@/lib/shortcuts";
 import {
+	computeCropForAspectRatio,
 	getAspectRatioValue,
 	getNativeAspectRatioValue,
 	isPortraitAspectRatio,
@@ -1560,15 +1561,19 @@ export default function VideoEditor() {
 									selectedAnnotationId={selectedAnnotationId}
 									onSelectAnnotation={handleSelectAnnotation}
 									aspectRatio={aspectRatio}
-									onAspectRatioChange={(ar) =>
+									onAspectRatioChange={(ar) => {
+										const vid = videoPlaybackRef.current?.video;
+										const vw = vid?.videoWidth || 1920;
+										const vh = vid?.videoHeight || 1080;
 										pushState({
 											aspectRatio: ar,
+											cropRegion: computeCropForAspectRatio(vw, vh, ar),
 											webcamLayoutPreset:
 												!isPortraitAspectRatio(ar) && webcamLayoutPreset === "vertical-stack"
 													? "picture-in-picture"
 													: webcamLayoutPreset,
-										})
-									}
+										});
+									}}
 								/>
 							</div>
 						</Panel>
