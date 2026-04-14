@@ -51,6 +51,8 @@ type UseScreenRecorderReturn = {
 	setSystemAudioEnabled: (enabled: boolean) => void;
 	webcamEnabled: boolean;
 	setWebcamEnabled: (enabled: boolean) => Promise<boolean>;
+	webcamDeviceId: string | undefined;
+	setWebcamDeviceId: (deviceId: string | undefined) => void;
 };
 
 type RecorderHandle = {
@@ -87,6 +89,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const [microphoneDeviceId, setMicrophoneDeviceId] = useState<string | undefined>(undefined);
 	const [systemAudioEnabled, setSystemAudioEnabled] = useState(false);
 	const [webcamEnabled, setWebcamEnabledState] = useState(false);
+	const [webcamDeviceId, setWebcamDeviceId] = useState<string | undefined>(undefined);
 	const screenRecorder = useRef<RecorderHandle | null>(null);
 	const webcamRecorder = useRef<RecorderHandle | null>(null);
 	const stream = useRef<MediaStream | null>(null);
@@ -410,6 +413,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					webcamStream.current = await navigator.mediaDevices.getUserMedia({
 						audio: false,
 						video: {
+							...(webcamDeviceId ? { deviceId: { exact: webcamDeviceId } } : {}),
 							width: { ideal: WEBCAM_TARGET_WIDTH },
 							height: { ideal: WEBCAM_TARGET_HEIGHT },
 							frameRate: { ideal: WEBCAM_TARGET_FRAME_RATE, max: WEBCAM_TARGET_FRAME_RATE },
@@ -602,5 +606,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		setSystemAudioEnabled,
 		webcamEnabled,
 		setWebcamEnabled,
+		webcamDeviceId,
+		setWebcamDeviceId,
 	};
 }

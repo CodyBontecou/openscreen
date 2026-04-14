@@ -57,6 +57,10 @@ export function createHudOverlayWindow(): BrowserWindow {
 
 	hudOverlayWindow = win;
 
+	// Exclude the HUD from screen capture on macOS (NSWindowSharingNone) so it
+	// doesn't appear in the recorded output while still staying visible to the user.
+	win.setContentProtection(true);
+
 	win.on("closed", () => {
 		if (hudOverlayWindow === win) {
 			hudOverlayWindow = null;
