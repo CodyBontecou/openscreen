@@ -1,6 +1,7 @@
 import Block from "@uiw/react-color-block";
 import {
 	Bug,
+	Camera,
 	Crop,
 	Download,
 	Film,
@@ -146,6 +147,8 @@ interface SettingsPanelProps {
 	hasWebcam?: boolean;
 	webcamLayoutPreset?: WebcamLayoutPreset;
 	onWebcamLayoutPresetChange?: (preset: WebcamLayoutPreset) => void;
+	onImportFaceVideo?: () => void;
+	onRemoveFaceVideo?: () => void;
 }
 
 export default SettingsPanel;
@@ -218,6 +221,8 @@ export function SettingsPanel({
 	hasWebcam = false,
 	webcamLayoutPreset = "picture-in-picture",
 	onWebcamLayoutPresetChange,
+	onImportFaceVideo,
+	onRemoveFaceVideo,
 }: SettingsPanelProps) {
 	const t = useScopedT("settings");
 	const [wallpaperPaths, setWallpaperPaths] = useState<string[]>([]);
@@ -587,21 +592,55 @@ export function SettingsPanel({
 
 				<Accordion
 					type="multiple"
-					defaultValue={hasWebcam ? ["layout", "effects", "background"] : ["effects", "background"]}
+					defaultValue={["webcam", "effects", "background"]}
 					className="space-y-1"
 				>
-					{hasWebcam && (
-						<AccordionItem
-							value="layout"
-							className="border-white/5 rounded-xl bg-white/[0.02] px-3"
-						>
-							<AccordionTrigger className="py-2.5 hover:no-underline">
-								<div className="flex items-center gap-2">
-									<Sparkles className="w-4 h-4 text-[#34B27B]" />
-									<span className="text-xs font-medium">{t("layout.title")}</span>
+					<AccordionItem value="webcam" className="border-white/5 rounded-xl bg-white/[0.02] px-3">
+						<AccordionTrigger className="py-2.5 hover:no-underline">
+							<div className="flex items-center gap-2">
+								<Camera className="w-4 h-4 text-[#34B27B]" />
+								<span className="text-xs font-medium">{t("webcam.title")}</span>
+							</div>
+						</AccordionTrigger>
+						<AccordionContent className="pb-3 space-y-2">
+							<div className="p-2 rounded-lg bg-white/5 border border-white/5">
+								<div className="text-[10px] font-medium text-slate-300 mb-1.5">
+									{t("webcam.faceVideo")}
 								</div>
-							</AccordionTrigger>
-							<AccordionContent className="pb-3">
+								{onImportFaceVideo &&
+									(hasWebcam ? (
+										<div className="flex gap-1.5">
+											<Button
+												variant="ghost"
+												onClick={onImportFaceVideo}
+												className="flex-1 h-8 text-xs gap-1.5 bg-black/20 border border-white/10 hover:bg-white/5"
+											>
+												<Upload className="w-3 h-3" />
+												{t("webcam.replace")}
+											</Button>
+											{onRemoveFaceVideo && (
+												<Button
+													variant="ghost"
+													onClick={onRemoveFaceVideo}
+													className="h-8 w-8 p-0 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 hover:border-red-500/30"
+													title={t("webcam.remove")}
+												>
+													<Trash2 className="w-3 h-3" />
+												</Button>
+											)}
+										</div>
+									) : (
+										<Button
+											variant="ghost"
+											onClick={onImportFaceVideo}
+											className="w-full h-8 text-xs gap-1.5 bg-black/20 border border-white/10 hover:bg-white/5"
+										>
+											<Upload className="w-3 h-3" />
+											{t("webcam.import")}
+										</Button>
+									))}
+							</div>
+							{hasWebcam && (
 								<div className="p-2 rounded-lg bg-white/5 border border-white/5">
 									<div className="text-[10px] font-medium text-slate-300 mb-1.5">
 										{t("layout.preset")}
@@ -630,9 +669,9 @@ export function SettingsPanel({
 										</SelectContent>
 									</Select>
 								</div>
-							</AccordionContent>
-						</AccordionItem>
-					)}
+							)}
+						</AccordionContent>
+					</AccordionItem>
 
 					<AccordionItem value="effects" className="border-white/5 rounded-xl bg-white/[0.02] px-3">
 						<AccordionTrigger className="py-2.5 hover:no-underline">

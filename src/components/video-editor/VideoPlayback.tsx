@@ -21,6 +21,7 @@ import {
 import { getAssetPath } from "@/lib/assetPath";
 import {
 	getWebcamLayoutCssBoxShadow,
+	getWebcamLayoutPresetDefinition,
 	type Size,
 	type StyledRenderRect,
 	type WebcamLayoutPreset,
@@ -161,6 +162,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const focusIndicatorRef = useRef<HTMLDivElement | null>(null);
 		const [webcamLayout, setWebcamLayout] = useState<StyledRenderRect | null>(null);
 		const [webcamDimensions, setWebcamDimensions] = useState<Size | null>(null);
+		const webcamLayoutRef = useRef<StyledRenderRect | null>(null);
+		const webcamLayoutPresetRef = useRef<WebcamLayoutPreset>("picture-in-picture");
 		const currentTimeRef = useRef(0);
 		const zoomRegionsRef = useRef<ZoomRegion[]>([]);
 		const selectedZoomIdRef = useRef<string | null>(null);
@@ -465,6 +468,9 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const handleWebcamPointerDown = (event: React.PointerEvent<HTMLVideoElement>) => {
 			if (isPlayingRef.current) return;
 			if (webcamLayoutPreset !== "picture-in-picture") return;
+			// Don't start a drag while the webcam is being zoom-scaled — drag math
+			// is calibrated to the unscaled rect and would jitter.
+			if (animationStateRef.current.appliedScale > 1.001) return;
 			event.preventDefault();
 			event.stopPropagation();
 			isDraggingWebcamRef.current = true;
@@ -510,6 +516,14 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		useEffect(() => {
 			zoomRegionsRef.current = zoomRegions;
 		}, [zoomRegions]);
+
+		useEffect(() => {
+			webcamLayoutRef.current = webcamLayout;
+		}, [webcamLayout]);
+
+		useEffect(() => {
+			webcamLayoutPresetRef.current = webcamLayoutPreset;
+		}, [webcamLayoutPreset]);
 
 		useEffect(() => {
 			selectedZoomIdRef.current = selectedZoomId;
@@ -1000,6 +1014,37 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					motionIntensity,
 					motionVector,
 				);
+
+				// Webcam follows zoom: scale anchored to the corner of the webcam
+				// closest to the canvas edge (Screen Studio style). PIP only.
+				const webcamEl = webcamVideoRef.current;
+				const webcamLayoutCurrent = webcamLayoutRef.current;
+				const presetCurrent = webcamLayoutPresetRef.current;
+				if (webcamEl && webcamLayoutCurrent && presetCurrent === "picture-in-picture") {
+					const stage = stageSizeRef.current;
+					const leftDistance = webcamLayoutCurrent.x;
+					const rightDistance = stage.width - (webcamLayoutCurrent.x + webcamLayoutCurrent.width);
+					const topDistance = webcamLayoutCurrent.y;
+					const bottomDistance =
+						stage.height - (webcamLayoutCurrent.y + webcamLayoutCurrent.height);
+					const originX = leftDistance < rightDistance ? "left" : "right";
+					const originY = topDistance < bottomDistance ? "top" : "bottom";
+
+					const shadowDef = getWebcamLayoutPresetDefinition(presetCurrent).shadow;
+					if (appliedScale > 1.001) {
+						webcamEl.style.transform = `scale(${appliedScale})`;
+						webcamEl.style.transformOrigin = `${originX} ${originY}`;
+						webcamEl.style.boxShadow = shadowDef
+							? `${shadowDef.offsetX / appliedScale}px ${shadowDef.offsetY / appliedScale}px ${shadowDef.blur / appliedScale}px ${shadowDef.color}`
+							: "none";
+					} else {
+						webcamEl.style.transform = "";
+						webcamEl.style.transformOrigin = "";
+						webcamEl.style.boxShadow = shadowDef
+							? `${shadowDef.offsetX}px ${shadowDef.offsetY}px ${shadowDef.blur}px ${shadowDef.color}`
+							: "none";
+					}
+				}
 			};
 
 			app.ticker.add(ticker);

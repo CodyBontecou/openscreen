@@ -19,6 +19,13 @@
 		"pictureInPicture": "Picture in Picture",
 		"verticalStack": "Vertical Stack"
 	},
+	"webcam": {
+		"title": "Webcam",
+		"faceVideo": "Face video",
+		"import": "Import face video",
+		"replace": "Replace face video",
+		"remove": "Remove"
+	},
 	"effects": {
 		"title": "Video Effects",
 		"blurBg": "Blur BG",

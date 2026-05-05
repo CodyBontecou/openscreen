@@ -668,7 +668,32 @@ export class FrameRenderer {
 		const webcamRect = this.layoutCache?.webcamRect ?? null;
 		if (webcamFrame && webcamRect) {
 			const preset = getWebcamLayoutPresetDefinition(this.config.webcamLayoutPreset);
+
+			// Webcam follows zoom (Screen Studio style): scale the webcam rect at 1:1 with
+			// the active zoom, anchored to the corner of the rect closest to the canvas
+			// edge. PIP only — vertical-stack is full-bleed and not zoom-reactive.
+			const webcamScale =
+				this.config.webcamLayoutPreset === "picture-in-picture"
+					? Math.max(1, this.animationState.appliedScale)
+					: 1;
+			const useScale = webcamScale > 1.001;
+			let anchorX = 0;
+			let anchorY = 0;
+			if (useScale) {
+				const leftDistance = webcamRect.x;
+				const rightDistance = w - (webcamRect.x + webcamRect.width);
+				const topDistance = webcamRect.y;
+				const bottomDistance = h - (webcamRect.y + webcamRect.height);
+				anchorX = leftDistance < rightDistance ? webcamRect.x : webcamRect.x + webcamRect.width;
+				anchorY = topDistance < bottomDistance ? webcamRect.y : webcamRect.y + webcamRect.height;
+			}
+
 			ctx.save();
+			if (useScale) {
+				ctx.translate(anchorX, anchorY);
+				ctx.scale(webcamScale, webcamScale);
+				ctx.translate(-anchorX, -anchorY);
+			}
 			ctx.beginPath();
 			ctx.roundRect(
 				webcamRect.x,
@@ -679,10 +704,13 @@ export class FrameRenderer {
 			);
 			ctx.closePath();
 			if (preset.shadow) {
+				// Pre-divide blur/offset by scale so the shadow doesn't grow quadratically
+				// when the canvas transform scale multiplies them again.
+				const sd = useScale ? webcamScale : 1;
 				ctx.shadowColor = preset.shadow.color;
-				ctx.shadowBlur = preset.shadow.blur;
-				ctx.shadowOffsetX = preset.shadow.offsetX;
-				ctx.shadowOffsetY = preset.shadow.offsetY;
+				ctx.shadowBlur = preset.shadow.blur / sd;
+				ctx.shadowOffsetX = preset.shadow.offsetX / sd;
+				ctx.shadowOffsetY = preset.shadow.offsetY / sd;
 			}
 			ctx.fillStyle = "#000000";
 			ctx.fill();

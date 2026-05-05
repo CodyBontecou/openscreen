@@ -19,6 +19,13 @@
 		"pictureInPicture": "画中画",
 		"verticalStack": "垂直堆叠"
 	},
+	"webcam": {
+		"title": "摄像头",
+		"faceVideo": "人脸视频",
+		"import": "导入人脸视频",
+		"replace": "替换人脸视频",
+		"remove": "移除"
+	},
 	"effects": {
 		"title": "视频效果",
 		"blurBg": "模糊背景",

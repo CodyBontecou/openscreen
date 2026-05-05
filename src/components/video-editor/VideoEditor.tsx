@@ -472,6 +472,20 @@ export default function VideoEditor() {
 		await saveProject(true);
 	}, [saveProject]);
 
+	const handleImportFaceVideo = useCallback(async () => {
+		const result = await window.electronAPI.openVideoFilePicker();
+		if (result.canceled || !result.success || !result.path) {
+			return;
+		}
+		setWebcamVideoSourcePath(result.path);
+		setWebcamVideoPath(toFileUrl(result.path));
+	}, []);
+
+	const handleRemoveFaceVideo = useCallback(() => {
+		setWebcamVideoSourcePath(null);
+		setWebcamVideoPath(null);
+	}, []);
+
 	const handleLoadProject = useCallback(async () => {
 		const result = await window.electronAPI.loadProjectFile();
 
@@ -1626,6 +1640,8 @@ export default function VideoEditor() {
 								webcamPosition: preset === "vertical-stack" ? null : webcamPosition,
 							})
 						}
+						onImportFaceVideo={handleImportFaceVideo}
+						onRemoveFaceVideo={handleRemoveFaceVideo}
 						videoElement={videoPlaybackRef.current?.video || null}
 						exportQuality={exportQuality}
 						onExportQualityChange={setExportQuality}

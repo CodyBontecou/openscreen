@@ -19,6 +19,13 @@
 		"pictureInPicture": "Imagen en imagen",
 		"verticalStack": "Apilado vertical"
 	},
+	"webcam": {
+		"title": "Cámara",
+		"faceVideo": "Vídeo de cara",
+		"import": "Importar vídeo de cara",
+		"replace": "Reemplazar vídeo de cara",
+		"remove": "Eliminar"
+	},
 	"effects": {
 		"title": "Efectos de video",
 		"blurBg": "Desenfocar fondo",
