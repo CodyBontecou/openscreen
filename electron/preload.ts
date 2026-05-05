@@ -118,6 +118,20 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	setLocale: (locale: string) => {
 		return ipcRenderer.invoke("set-locale", locale);
 	},
+	showCameraPreview: (deviceId?: string) => {
+		return ipcRenderer.invoke("show-camera-preview", deviceId);
+	},
+	hideCameraPreview: () => {
+		return ipcRenderer.invoke("hide-camera-preview");
+	},
+	closeCameraPreview: () => {
+		return ipcRenderer.invoke("close-camera-preview");
+	},
+	onCameraDeviceChanged: (callback: (deviceId?: string) => void) => {
+		const listener = (_: Electron.IpcRendererEvent, deviceId?: string) => callback(deviceId);
+		ipcRenderer.on("camera-device-changed", listener);
+		return () => ipcRenderer.removeListener("camera-device-changed", listener);
+	},
 	setMicrophoneExpanded: (expanded: boolean) => {
 		ipcRenderer.send("hud:setMicrophoneExpanded", expanded);
 	},

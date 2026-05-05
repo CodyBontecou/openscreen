@@ -124,6 +124,23 @@ export function LaunchWindow() {
 		}
 	}, [selectedCameraDeviceId, setWebcamDeviceId]);
 
+	// Camera preview: show when webcam enabled and not recording, hide otherwise
+	useEffect(() => {
+		if (!window.electronAPI) return;
+		if (webcamEnabled && !recording) {
+			void window.electronAPI.showCameraPreview(webcamDeviceId);
+		} else {
+			void window.electronAPI.hideCameraPreview();
+		}
+	}, [webcamEnabled, webcamDeviceId, recording]);
+
+	// Close preview when HUD closes
+	useEffect(() => {
+		return () => {
+			void window.electronAPI?.closeCameraPreview();
+		};
+	}, []);
+
 	// Close dropdown on outside click
 	useEffect(() => {
 		if (!openDropdown) return;

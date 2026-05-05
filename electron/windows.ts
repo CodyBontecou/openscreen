@@ -10,6 +10,7 @@ const RENDERER_DIST = path.join(APP_ROOT, "dist");
 const HEADLESS = process.env["HEADLESS"] === "true";
 
 let hudOverlayWindow: BrowserWindow | null = null;
+let cameraPreviewWindow: BrowserWindow | null = null;
 
 ipcMain.on("hud-overlay-hide", () => {
 	if (hudOverlayWindow && !hudOverlayWindow.isDestroyed()) {
@@ -76,6 +77,61 @@ export function createHudOverlayWindow(): BrowserWindow {
 	}
 
 	return win;
+}
+
+export function createCameraPreviewWindow(deviceId?: string): BrowserWindow {
+	const primaryDisplay = screen.getPrimaryDisplay();
+	const { workArea } = primaryDisplay;
+
+	const size = 200;
+	const x = Math.floor(workArea.x + workArea.width - size - 20);
+	const y = Math.floor(workArea.y + 20);
+
+	const win = new BrowserWindow({
+		width: size,
+		height: size,
+		x,
+		y,
+		frame: false,
+		transparent: true,
+		resizable: false,
+		alwaysOnTop: true,
+		skipTaskbar: true,
+		hasShadow: false,
+		show: !HEADLESS,
+		webPreferences: {
+			preload: path.join(__dirname, "preload.mjs"),
+			nodeIntegration: false,
+			contextIsolation: true,
+			backgroundThrottling: false,
+		},
+	});
+
+	win.setContentProtection(true);
+
+	const deviceParam = deviceId ? `&deviceId=${encodeURIComponent(deviceId)}` : "";
+
+	if (VITE_DEV_SERVER_URL) {
+		win.loadURL(VITE_DEV_SERVER_URL + `?windowType=camera-preview${deviceParam}`);
+	} else {
+		win.loadFile(path.join(RENDERER_DIST, "index.html"), {
+			query: { windowType: "camera-preview", ...(deviceId && { deviceId }) },
+		});
+	}
+
+	cameraPreviewWindow = win;
+
+	win.on("closed", () => {
+		if (cameraPreviewWindow === win) {
+			cameraPreviewWindow = null;
+		}
+	});
+
+	return win;
+}
+
+export function getCameraPreviewWindow(): BrowserWindow | null {
+	return cameraPreviewWindow;
 }
 
 export function createEditorWindow(): BrowserWindow {

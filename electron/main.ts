@@ -14,7 +14,13 @@ import {
 } from "electron";
 import { mainT, setMainLocale } from "./i18n";
 import { registerIpcHandlers } from "./ipc/handlers";
-import { createEditorWindow, createHudOverlayWindow, createSourceSelectorWindow } from "./windows";
+import {
+	createCameraPreviewWindow,
+	createEditorWindow,
+	createHudOverlayWindow,
+	createSourceSelectorWindow,
+	getCameraPreviewWindow,
+} from "./windows";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -370,6 +376,30 @@ app.whenReady().then(async () => {
 	setupApplicationMenu();
 	// Ensure recordings directory exists
 	await ensureRecordingsDir();
+
+	ipcMain.handle("show-camera-preview", (_, deviceId?: string) => {
+		const existing = getCameraPreviewWindow();
+		if (existing && !existing.isDestroyed()) {
+			existing.webContents.send("camera-device-changed", deviceId);
+			if (!existing.isVisible()) existing.show();
+			return;
+		}
+		createCameraPreviewWindow(deviceId);
+	});
+
+	ipcMain.handle("hide-camera-preview", () => {
+		const existing = getCameraPreviewWindow();
+		if (existing && !existing.isDestroyed()) {
+			existing.hide();
+		}
+	});
+
+	ipcMain.handle("close-camera-preview", () => {
+		const existing = getCameraPreviewWindow();
+		if (existing && !existing.isDestroyed()) {
+			existing.close();
+		}
+	});
 
 	registerIpcHandlers(
 		createEditorWindowWrapper,

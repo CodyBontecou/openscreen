@@ -137,6 +137,10 @@ interface Window {
 		setHasUnsavedChanges: (hasChanges: boolean) => void;
 		onRequestSaveBeforeClose: (callback: () => Promise<boolean> | boolean) => () => void;
 		setLocale: (locale: string) => Promise<void>;
+		showCameraPreview: (deviceId?: string) => Promise<void>;
+		hideCameraPreview: () => Promise<void>;
+		closeCameraPreview: () => Promise<void>;
+		onCameraDeviceChanged: (callback: (deviceId?: string) => void) => () => void;
 	};
 }
 
