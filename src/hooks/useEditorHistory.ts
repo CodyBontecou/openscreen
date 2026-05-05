@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import type {
 	AnnotationRegion,
 	CropRegion,
+	FaceSegment,
 	SpeedRegion,
 	TrimRegion,
 	WebcamLayoutPreset,
@@ -22,6 +23,7 @@ export interface EditorState {
 	trimRegions: TrimRegion[];
 	speedRegions: SpeedRegion[];
 	annotationRegions: AnnotationRegion[];
+	faceSegments: FaceSegment[];
 	cropRegion: CropRegion;
 	wallpaper: string;
 	shadowIntensity: number;
@@ -32,6 +34,7 @@ export interface EditorState {
 	aspectRatio: AspectRatio;
 	webcamLayoutPreset: WebcamLayoutPreset;
 	webcamPosition: WebcamPosition | null;
+	webcamOffsetMs: number;
 }
 
 export const INITIAL_EDITOR_STATE: EditorState = {
@@ -39,6 +42,7 @@ export const INITIAL_EDITOR_STATE: EditorState = {
 	trimRegions: [],
 	speedRegions: [],
 	annotationRegions: [],
+	faceSegments: [],
 	cropRegion: DEFAULT_CROP_REGION,
 	wallpaper: "#000000",
 	shadowIntensity: 0,
@@ -49,6 +53,7 @@ export const INITIAL_EDITOR_STATE: EditorState = {
 	aspectRatio: "16:9",
 	webcamLayoutPreset: DEFAULT_WEBCAM_LAYOUT_PRESET,
 	webcamPosition: DEFAULT_WEBCAM_POSITION,
+	webcamOffsetMs: 0,
 };
 
 type StateUpdate = Partial<EditorState> | ((prev: EditorState) => Partial<EditorState>);

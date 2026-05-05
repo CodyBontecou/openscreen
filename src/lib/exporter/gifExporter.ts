@@ -2,6 +2,7 @@ import GIF from "gif.js";
 import type {
 	AnnotationRegion,
 	CropRegion,
+	FaceSegment,
 	SpeedRegion,
 	TrimRegion,
 	WebcamLayoutPreset,
@@ -42,6 +43,9 @@ interface GifExporterConfig {
 	cropRegion: CropRegion;
 	webcamLayoutPreset?: WebcamLayoutPreset;
 	webcamPosition?: { cx: number; cy: number } | null;
+	webcamOffsetMs?: number;
+	webcamSegments?: FaceSegment[];
+	webcamDurationMs?: number;
 	annotationRegions?: AnnotationRegion[];
 	previewWidth?: number;
 	previewHeight?: number;
@@ -185,6 +189,22 @@ export class GifExporter {
 			console.log("[GifExporter] Using streaming decode (web-demuxer + VideoDecoder)");
 
 			let frameIndex = 0;
+			const gifFrameDurationMs = 1000 / this.config.frameRate;
+			const gifWebcamOffsetMs = this.config.webcamOffsetMs ?? 0;
+			const gifFaceSegments: FaceSegment[] =
+				this.config.webcamSegments && this.config.webcamSegments.length > 0
+					? this.config.webcamSegments
+					: (this.config.webcamDurationMs ?? 0) > 0
+						? [
+								{
+									id: "face-virtual",
+									sourceStartMs: 0,
+									sourceEndMs: this.config.webcamDurationMs ?? 0,
+									screenStartMs: 0,
+								},
+							]
+						: [];
+			let gifConsumedFaceIdx = -1;
 			webcamFrameQueue = this.config.webcamVideoUrl ? new AsyncVideoFrameQueue() : null;
 			let stopWebcamDecode = false;
 			let webcamDecodeError: Error | null = null;
@@ -193,21 +213,16 @@ export class GifExporter {
 					? (() => {
 							const queue = webcamFrameQueue;
 							return this.webcamDecoder
-								.decodeAll(
-									this.config.frameRate,
-									this.config.trimRegions,
-									this.config.speedRegions,
-									async (webcamFrame) => {
-										while (queue.length >= 12 && !this.cancelled && !stopWebcamDecode) {
-											await new Promise((resolve) => setTimeout(resolve, 2));
-										}
-										if (this.cancelled || stopWebcamDecode) {
-											webcamFrame.close();
-											return;
-										}
-										queue.enqueue(webcamFrame);
-									},
-								)
+								.decodeAll(this.config.frameRate, undefined, undefined, async (webcamFrame) => {
+									while (queue.length >= 12 && !this.cancelled && !stopWebcamDecode) {
+										await new Promise((resolve) => setTimeout(resolve, 2));
+									}
+									if (this.cancelled || stopWebcamDecode) {
+										webcamFrame.close();
+										return;
+									}
+									queue.enqueue(webcamFrame);
+								})
 								.catch((error) => {
 									webcamDecodeError = error instanceof Error ? error : new Error(String(error));
 									throw error;
@@ -234,7 +249,36 @@ export class GifExporter {
 							return;
 						}
 
-						webcamFrame = webcamFrameQueue ? await webcamFrameQueue.dequeue() : null;
+						if (webcamFrameQueue) {
+							const outputMs = frameIndex * gifFrameDurationMs;
+							const tRel = outputMs - gifWebcamOffsetMs;
+							const seg =
+								gifFaceSegments.find(
+									(s) =>
+										tRel >= s.screenStartMs &&
+										tRel < s.screenStartMs + (s.sourceEndMs - s.sourceStartMs),
+								) ?? null;
+							if (!seg) {
+								webcamFrame = null;
+							} else {
+								const sourceMs = seg.sourceStartMs + (tRel - seg.screenStartMs);
+								const wantFaceIdx = Math.round(sourceMs / gifFrameDurationMs);
+								while (gifConsumedFaceIdx + 1 < wantFaceIdx) {
+									const skipped = await webcamFrameQueue.dequeue();
+									if (skipped) skipped.close();
+									gifConsumedFaceIdx++;
+									if (this.cancelled) return;
+								}
+								if (gifConsumedFaceIdx + 1 === wantFaceIdx) {
+									webcamFrame = await webcamFrameQueue.dequeue();
+									gifConsumedFaceIdx++;
+								} else {
+									webcamFrame = null;
+								}
+							}
+						} else {
+							webcamFrame = null;
+						}
 						const renderer = this.renderer;
 						if (this.cancelled || !renderer) {
 							return;

@@ -24,7 +24,8 @@
 		"faceVideo": "Vídeo de cara",
 		"import": "Importar vídeo de cara",
 		"replace": "Reemplazar vídeo de cara",
-		"remove": "Eliminar"
+		"remove": "Eliminar",
+		"offsetSeconds": "Desfase (s)"
 	},
 	"effects": {
 		"title": "Efectos de video",

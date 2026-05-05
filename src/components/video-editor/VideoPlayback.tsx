@@ -34,6 +34,7 @@ import {
 import { AnnotationOverlay } from "./AnnotationOverlay";
 import {
 	type AnnotationRegion,
+	type FaceSegment,
 	type PreviewQuality,
 	type SpeedRegion,
 	type TrimRegion,
@@ -66,6 +67,9 @@ interface VideoPlaybackProps {
 	webcamVideoPath?: string;
 	webcamLayoutPreset: WebcamLayoutPreset;
 	webcamPosition?: { cx: number; cy: number } | null;
+	webcamOffsetMs?: number;
+	webcamSegments?: FaceSegment[];
+	webcamDurationMs?: number;
 	onWebcamPositionChange?: (position: { cx: number; cy: number }) => void;
 	onWebcamPositionDragEnd?: () => void;
 	onDurationChange: (duration: number) => void;
@@ -115,6 +119,9 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			webcamVideoPath,
 			webcamLayoutPreset,
 			webcamPosition,
+			webcamOffsetMs = 0,
+			webcamSegments = [],
+			webcamDurationMs = 0,
 			onWebcamPositionChange,
 			onWebcamPositionDragEnd,
 			onDurationChange,
@@ -162,6 +169,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const focusIndicatorRef = useRef<HTMLDivElement | null>(null);
 		const [webcamLayout, setWebcamLayout] = useState<StyledRenderRect | null>(null);
 		const [webcamDimensions, setWebcamDimensions] = useState<Size | null>(null);
+		const [webcamInRange, setWebcamInRange] = useState(true);
 		const webcamLayoutRef = useRef<StyledRenderRect | null>(null);
 		const webcamLayoutPresetRef = useRef<WebcamLayoutPreset>("picture-in-picture");
 		const currentTimeRef = useRef(0);
@@ -1117,28 +1125,67 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				return;
 			}
 
-			const activeSpeedRegion =
-				speedRegions.find(
-					(region) => currentTime * 1000 >= region.startMs && currentTime * 1000 < region.endMs,
+			const screenMs = currentTime * 1000;
+			const tRel = screenMs - webcamOffsetMs;
+			const segments: FaceSegment[] =
+				webcamSegments.length > 0
+					? webcamSegments
+					: webcamDurationMs > 0
+						? [
+								{
+									id: "face-virtual",
+									sourceStartMs: 0,
+									sourceEndMs: webcamDurationMs,
+									screenStartMs: 0,
+								},
+							]
+						: [];
+			const activeSegment =
+				segments.find(
+					(seg) =>
+						tRel >= seg.screenStartMs &&
+						tRel < seg.screenStartMs + (seg.sourceEndMs - seg.sourceStartMs),
 				) ?? null;
+			const visible = activeSegment !== null;
+			setWebcamInRange(visible);
+
+			if (!visible || !activeSegment) {
+				webcamVideo.pause();
+				return;
+			}
+
+			const sourceTimeMs = activeSegment.sourceStartMs + (tRel - activeSegment.screenStartMs);
+			const targetTime = sourceTimeMs / 1000;
+
+			const activeSpeedRegion =
+				speedRegions.find((region) => screenMs >= region.startMs && screenMs < region.endMs) ??
+				null;
 			webcamVideo.playbackRate = activeSpeedRegion ? activeSpeedRegion.speed : 1;
 
 			if (!isPlaying) {
 				webcamVideo.pause();
-				if (Math.abs(webcamVideo.currentTime - currentTime) > 0.05) {
-					webcamVideo.currentTime = currentTime;
+				if (Math.abs(webcamVideo.currentTime - targetTime) > 0.05) {
+					webcamVideo.currentTime = targetTime;
 				}
 				return;
 			}
 
-			if (Math.abs(webcamVideo.currentTime - currentTime) > 0.15) {
-				webcamVideo.currentTime = currentTime;
+			if (Math.abs(webcamVideo.currentTime - targetTime) > 0.15) {
+				webcamVideo.currentTime = targetTime;
 			}
 
 			webcamVideo.play().catch(() => {
 				// Ignore webcam autoplay restoration failures.
 			});
-		}, [currentTime, isPlaying, speedRegions, webcamVideoPath]);
+		}, [
+			currentTime,
+			isPlaying,
+			speedRegions,
+			webcamVideoPath,
+			webcamOffsetMs,
+			webcamSegments,
+			webcamDurationMs,
+		]);
 
 		useEffect(() => {
 			const webcamVideo = webcamVideoRef.current;
@@ -1270,7 +1317,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 							borderRadius: webcamLayout?.borderRadius ?? 0,
 							boxShadow: webcamCssBoxShadow,
 							zIndex: 20,
-							opacity: webcamLayout ? 1 : 0,
+							opacity: webcamLayout && webcamInRange ? 1 : 0,
+							pointerEvents: webcamInRange ? undefined : "none",
 							backgroundColor: "#000",
 						}}
 						onPointerDown={handleWebcamPointerDown}

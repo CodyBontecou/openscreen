@@ -7,6 +7,7 @@ import {
 	MessageSquare,
 	Plus,
 	Scissors,
+	Slice,
 	WandSparkles,
 	ZoomIn,
 } from "lucide-react";
@@ -30,6 +31,7 @@ import { TutorialHelp } from "../TutorialHelp";
 import type {
 	AnnotationRegion,
 	CursorTelemetryPoint,
+	FaceSegment,
 	SpeedRegion,
 	TrimRegion,
 	ZoomFocus,
@@ -45,6 +47,8 @@ const ZOOM_ROW_ID = "row-zoom";
 const TRIM_ROW_ID = "row-trim";
 const ANNOTATION_ROW_ID = "row-annotation";
 const SPEED_ROW_ID = "row-speed";
+const FACE_ROW_ID = "row-face";
+const FACE_ITEM_ID = "face-item";
 const FALLBACK_RANGE_MS = 1000;
 const TARGET_MARKER_COUNT = 12;
 const SUGGESTION_SPACING_MS = 1800;
@@ -78,9 +82,22 @@ interface TimelineEditorProps {
 	onSpeedSpanChange?: (id: string, span: Span) => void;
 	onSpeedDelete?: (id: string) => void;
 	selectedSpeedId?: string | null;
+	webcamVideoPath?: string | null;
+	webcamDurationMs?: number;
+	webcamOffsetMs?: number;
+	onWebcamOffsetChange?: (offsetMs: number) => void;
 	onSelectSpeed?: (id: string | null) => void;
 	aspectRatio: AspectRatio;
 	onAspectRatioChange: (aspectRatio: AspectRatio) => void;
+	onZoomSplit?: (id: string, atMs: number) => void;
+	onTrimSplit?: (id: string, atMs: number) => void;
+	onSpeedSplit?: (id: string, atMs: number) => void;
+	onAnnotationSplit?: (id: string, atMs: number) => void;
+	faceSegments?: FaceSegment[];
+	onFaceCut?: (span: Span) => void;
+	selectedFaceSegmentId?: string | null;
+	onSelectFaceSegment?: (id: string | null) => void;
+	onFaceSegmentDelete?: (id: string) => void;
 }
 
 interface TimelineScaleConfig {
@@ -96,7 +113,7 @@ interface TimelineRenderItem {
 	label: string;
 	zoomDepth?: number;
 	speedValue?: number;
-	variant: "zoom" | "trim" | "annotation" | "speed";
+	variant: "zoom" | "trim" | "annotation" | "speed" | "face";
 }
 
 const SCALE_CANDIDATES = [
@@ -531,6 +548,16 @@ function Timeline({
 	selectedAnnotationId,
 	selectedSpeedId,
 	keyframes = [],
+	hasFaceVideo = false,
+	bladeMode = false,
+	onZoomSplit,
+	onTrimSplit,
+	onSpeedSplit,
+	onAnnotationSplit,
+	onTrimAddedFromBlade,
+	onFaceCutFromBlade,
+	selectedFaceSegmentId,
+	onSelectFaceSegment,
 }: {
 	items: TimelineRenderItem[];
 	videoDurationMs: number;
@@ -546,9 +573,20 @@ function Timeline({
 	selectedAnnotationId?: string | null;
 	selectedSpeedId?: string | null;
 	keyframes?: { id: string; time: number }[];
+	hasFaceVideo?: boolean;
+	bladeMode?: boolean;
+	onZoomSplit?: (id: string, atMs: number) => void;
+	onTrimSplit?: (id: string, atMs: number) => void;
+	onSpeedSplit?: (id: string, atMs: number) => void;
+	onAnnotationSplit?: (id: string, atMs: number) => void;
+	onTrimAddedFromBlade?: (span: Span) => void;
+	onFaceCutFromBlade?: (span: Span) => void;
+	selectedFaceSegmentId?: string | null;
+	onSelectFaceSegment?: (id: string | null) => void;
 }) {
 	const t = useScopedT("timeline");
-	const { setTimelineRef, style, sidebarWidth, range, pixelsToValue } = useTimelineContext();
+	const { setTimelineRef, style, sidebarWidth, range, pixelsToValue, valueToPixels } =
+		useTimelineContext();
 	const localTimelineRef = useRef<HTMLDivElement | null>(null);
 
 	const setRefs = useCallback(
@@ -562,6 +600,7 @@ function Timeline({
 	const handleTimelineClick = useCallback(
 		(e: React.MouseEvent<HTMLDivElement>) => {
 			if (!onSeek || videoDurationMs <= 0) return;
+			if (bladeMode) return;
 
 			// Only clear selection if clicking on empty space (not on items)
 			// This is handled by event propagation - items stop propagation
@@ -569,6 +608,7 @@ function Timeline({
 			onSelectTrim?.(null);
 			onSelectAnnotation?.(null);
 			onSelectSpeed?.(null);
+			onSelectFaceSegment?.(null);
 
 			const rect = e.currentTarget.getBoundingClientRect();
 			const clickX = e.clientX - rect.left - sidebarWidth;
@@ -587,11 +627,110 @@ function Timeline({
 			onSelectTrim,
 			onSelectAnnotation,
 			onSelectSpeed,
+			onSelectFaceSegment,
 			videoDurationMs,
 			sidebarWidth,
 			range.start,
 			pixelsToValue,
+			bladeMode,
 		],
+	);
+
+	const bladePreviewRef = useRef<HTMLDivElement | null>(null);
+	const bladePaintRef = useRef<{
+		startMs: number;
+		downX: number;
+		pointerId: number;
+		rowId: string | null;
+	} | null>(null);
+
+	const xToAbsoluteMs = useCallback(
+		(clientX: number, container: HTMLElement) => {
+			const rect = container.getBoundingClientRect();
+			const localX = clientX - rect.left - sidebarWidth;
+			const safeX = Math.max(0, localX);
+			const relativeMs = pixelsToValue(safeX);
+			return Math.max(0, Math.min(range.start + relativeMs, videoDurationMs));
+		},
+		[sidebarWidth, pixelsToValue, range.start, videoDurationMs],
+	);
+
+	const updateBladePreview = useCallback(
+		(startMs: number, endMs: number) => {
+			const el = bladePreviewRef.current;
+			if (!el) return;
+			const a = Math.min(startMs, endMs);
+			const b = Math.max(startMs, endMs);
+			const startPx = sidebarWidth + valueToPixels(a - range.start);
+			const widthPx = valueToPixels(b - a);
+			el.style.left = `${startPx}px`;
+			el.style.width = `${Math.max(2, widthPx)}px`;
+			el.style.opacity = "1";
+		},
+		[sidebarWidth, range.start, valueToPixels],
+	);
+
+	const hideBladePreview = useCallback(() => {
+		const el = bladePreviewRef.current;
+		if (el) el.style.opacity = "0";
+	}, []);
+
+	const handleBladePointerDown = useCallback(
+		(e: React.PointerEvent<HTMLDivElement>) => {
+			if (!bladeMode || videoDurationMs <= 0) return;
+			if (e.button !== 0) return;
+			const container = e.currentTarget;
+			const startMs = xToAbsoluteMs(e.clientX, container);
+			const targetEl = e.target instanceof Element ? e.target : null;
+			const rowEl = targetEl?.closest("[data-row-id]") as HTMLElement | null;
+			const rowId = rowEl?.dataset.rowId ?? null;
+			bladePaintRef.current = { startMs, downX: e.clientX, pointerId: e.pointerId, rowId };
+			container.setPointerCapture(e.pointerId);
+			updateBladePreview(startMs, startMs);
+			e.preventDefault();
+			e.stopPropagation();
+		},
+		[bladeMode, videoDurationMs, xToAbsoluteMs, updateBladePreview],
+	);
+
+	const handleBladePointerMove = useCallback(
+		(e: React.PointerEvent<HTMLDivElement>) => {
+			const paint = bladePaintRef.current;
+			if (!paint || !bladeMode) return;
+			const container = e.currentTarget;
+			const currentMs = xToAbsoluteMs(e.clientX, container);
+			updateBladePreview(paint.startMs, currentMs);
+		},
+		[bladeMode, xToAbsoluteMs, updateBladePreview],
+	);
+
+	const handleBladePointerUp = useCallback(
+		(e: React.PointerEvent<HTMLDivElement>) => {
+			const paint = bladePaintRef.current;
+			if (!paint) return;
+			bladePaintRef.current = null;
+			try {
+				e.currentTarget.releasePointerCapture(paint.pointerId);
+			} catch {
+				// no-op
+			}
+			hideBladePreview();
+			const isFaceRow = paint.rowId === FACE_ROW_ID;
+			const handler = isFaceRow ? onFaceCutFromBlade : onTrimAddedFromBlade;
+			if (!handler) return;
+			const container = e.currentTarget;
+			const endMs = xToAbsoluteMs(e.clientX, container);
+			const dragPx = Math.abs(e.clientX - paint.downX);
+			const startMs = Math.min(paint.startMs, endMs);
+			const stopMs = Math.max(paint.startMs, endMs);
+			const span =
+				dragPx < 4
+					? { start: paint.startMs, end: Math.min(paint.startMs + 100, videoDurationMs) }
+					: { start: startMs, end: stopMs };
+			if (span.end - span.start < 1) return;
+			handler(span);
+		},
+		[hideBladePreview, onTrimAddedFromBlade, onFaceCutFromBlade, videoDurationMs, xToAbsoluteMs],
 	);
 
 	const handleTimelineWheel = useCallback(
@@ -638,14 +777,22 @@ function Timeline({
 	const trimItems = items.filter((item) => item.rowId === TRIM_ROW_ID);
 	const annotationItems = items.filter((item) => item.rowId === ANNOTATION_ROW_ID);
 	const speedItems = items.filter((item) => item.rowId === SPEED_ROW_ID);
+	const faceItems = items.filter((item) => item.rowId === FACE_ROW_ID);
 
 	return (
 		<div
 			ref={setRefs}
-			style={style}
-			className="select-none bg-[#09090b] min-h-[140px] relative cursor-pointer group"
+			style={{ ...style, cursor: bladeMode ? "crosshair" : undefined }}
+			className={cn(
+				"select-none bg-[#09090b] min-h-[140px] relative group",
+				bladeMode ? "" : "cursor-pointer",
+			)}
 			onClick={handleTimelineClick}
 			onWheel={handleTimelineWheel}
+			onPointerDown={handleBladePointerDown}
+			onPointerMove={handleBladePointerMove}
+			onPointerUp={handleBladePointerUp}
+			onPointerCancel={handleBladePointerUp}
 		>
 			<div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff03_1px,transparent_1px)] bg-[length:20px_100%] pointer-events-none" />
 			<TimelineAxis videoDurationMs={videoDurationMs} currentTimeMs={currentTimeMs} />
@@ -656,6 +803,12 @@ function Timeline({
 				onRangeChange={onRangeChange}
 				timelineRef={localTimelineRef}
 				keyframes={keyframes}
+			/>
+
+			<div
+				ref={bladePreviewRef}
+				className="absolute top-0 bottom-0 pointer-events-none z-[55] rounded-md bg-[#ef4444]/20 border border-[#ef4444]/60"
+				style={{ opacity: 0, transition: "opacity 0.05s", left: 0, width: 0 }}
 			/>
 
 			<Row id={ZOOM_ROW_ID} isEmpty={zoomItems.length === 0} hint={t("hints.pressZoom")}>
@@ -669,6 +822,8 @@ function Timeline({
 						onSelect={() => onSelectZoom?.(item.id)}
 						zoomDepth={item.zoomDepth}
 						variant="zoom"
+						bladeMode={bladeMode}
+						onBladeSplit={(atMs) => onZoomSplit?.(item.id, atMs)}
 					>
 						{item.label}
 					</Item>
@@ -685,6 +840,8 @@ function Timeline({
 						isSelected={item.id === selectedTrimId}
 						onSelect={() => onSelectTrim?.(item.id)}
 						variant="trim"
+						bladeMode={bladeMode}
+						onBladeSplit={(atMs) => onTrimSplit?.(item.id, atMs)}
 					>
 						{item.label}
 					</Item>
@@ -705,6 +862,8 @@ function Timeline({
 						isSelected={item.id === selectedAnnotationId}
 						onSelect={() => onSelectAnnotation?.(item.id)}
 						variant="annotation"
+						bladeMode={bladeMode}
+						onBladeSplit={(atMs) => onAnnotationSplit?.(item.id, atMs)}
 					>
 						{item.label}
 					</Item>
@@ -722,11 +881,32 @@ function Timeline({
 						onSelect={() => onSelectSpeed?.(item.id)}
 						variant="speed"
 						speedValue={item.speedValue}
+						bladeMode={bladeMode}
+						onBladeSplit={(atMs) => onSpeedSplit?.(item.id, atMs)}
 					>
 						{item.label}
 					</Item>
 				))}
 			</Row>
+
+			{hasFaceVideo && (
+				<Row id={FACE_ROW_ID} isEmpty={faceItems.length === 0} hint={t("hints.dragFace")}>
+					{faceItems.map((item) => (
+						<Item
+							id={item.id}
+							key={item.id}
+							rowId={item.rowId}
+							span={item.span}
+							variant="face"
+							bladeMode={bladeMode}
+							isSelected={item.id === selectedFaceSegmentId}
+							onSelect={item.id === FACE_ITEM_ID ? undefined : () => onSelectFaceSegment?.(item.id)}
+						>
+							{item.label}
+						</Item>
+					))}
+				</Row>
+			)}
 		</div>
 	);
 }
@@ -763,6 +943,19 @@ export default function TimelineEditor({
 	onSelectSpeed,
 	aspectRatio,
 	onAspectRatioChange,
+	webcamVideoPath,
+	webcamDurationMs = 0,
+	webcamOffsetMs = 0,
+	onWebcamOffsetChange,
+	onZoomSplit,
+	onTrimSplit,
+	onSpeedSplit,
+	onAnnotationSplit,
+	faceSegments = [],
+	onFaceCut,
+	selectedFaceSegmentId,
+	onSelectFaceSegment,
+	onFaceSegmentDelete,
 }: TimelineEditorProps) {
 	const t = useScopedT("timeline");
 	const totalMs = useMemo(() => Math.max(0, Math.round(videoDuration * 1000)), [videoDuration]);
@@ -779,6 +972,7 @@ export default function TimelineEditor({
 	const [range, setRange] = useState<Range>(() => createInitialRange(totalMs));
 	const [keyframes, setKeyframes] = useState<{ id: string; time: number }[]>([]);
 	const [selectedKeyframeId, setSelectedKeyframeId] = useState<string | null>(null);
+	const [bladeMode, setBladeMode] = useState(false);
 	const [scrollLabels, setScrollLabels] = useState({
 		pan: "Scroll",
 		zoom: "Ctrl + Scroll",
@@ -1186,6 +1380,12 @@ export default function TimelineEditor({
 			if (matchesShortcut(e, keyShortcuts.addSpeed, isMac)) {
 				handleAddSpeed();
 			}
+			if (matchesShortcut(e, keyShortcuts.toggleBlade, isMac)) {
+				setBladeMode((prev) => !prev);
+			}
+			if (e.key === "Escape" && bladeMode) {
+				setBladeMode(false);
+			}
 
 			// Tab: Cycle through overlapping annotations at current time
 			if (e.key === "Tab" && annotationRegions.length > 0) {
@@ -1225,6 +1425,8 @@ export default function TimelineEditor({
 					deleteSelectedAnnotation();
 				} else if (selectedSpeedId) {
 					deleteSelectedSpeed();
+				} else if (selectedFaceSegmentId) {
+					onFaceSegmentDelete?.(selectedFaceSegmentId);
 				}
 			}
 		};
@@ -1246,11 +1448,14 @@ export default function TimelineEditor({
 		selectedTrimId,
 		selectedAnnotationId,
 		selectedSpeedId,
+		selectedFaceSegmentId,
+		onFaceSegmentDelete,
 		annotationRegions,
 		currentTime,
 		onSelectAnnotation,
 		keyShortcuts,
 		isMac,
+		bladeMode,
 	]);
 
 	const clampedRange = useMemo<Range>(() => {
@@ -1313,8 +1518,53 @@ export default function TimelineEditor({
 			variant: "speed",
 		}));
 
-		return [...zooms, ...trims, ...annotations, ...speeds];
-	}, [zoomRegions, trimRegions, annotationRegions, speedRegions, t]);
+		const faceItems: TimelineRenderItem[] = [];
+		if (webcamVideoPath && webcamDurationMs > 0) {
+			const limit = totalMs > 0 ? totalMs : Infinity;
+			if (faceSegments.length === 0) {
+				const start = Math.max(0, webcamOffsetMs);
+				const end = Math.min(limit, webcamOffsetMs + webcamDurationMs);
+				if (end > start) {
+					faceItems.push({
+						id: FACE_ITEM_ID,
+						rowId: FACE_ROW_ID,
+						span: { start, end },
+						label: t("labels.faceItem"),
+						variant: "face",
+					});
+				}
+			} else {
+				for (const seg of faceSegments) {
+					const segStart = webcamOffsetMs + seg.screenStartMs;
+					const segEnd = segStart + (seg.sourceEndMs - seg.sourceStartMs);
+					const start = Math.max(0, segStart);
+					const end = Math.min(limit, segEnd);
+					if (end > start) {
+						faceItems.push({
+							id: seg.id,
+							rowId: FACE_ROW_ID,
+							span: { start, end },
+							label: t("labels.faceItem"),
+							variant: "face",
+						});
+					}
+				}
+			}
+		}
+
+		return [...zooms, ...trims, ...annotations, ...speeds, ...faceItems];
+	}, [
+		zoomRegions,
+		trimRegions,
+		annotationRegions,
+		speedRegions,
+		t,
+		webcamVideoPath,
+		webcamDurationMs,
+		webcamOffsetMs,
+		totalMs,
+		faceSegments,
+	]);
 
 	// Flat list of all non-annotation region spans for neighbour-clamping during drag/resize
 	const allRegionSpans = useMemo(() => {
@@ -1326,6 +1576,15 @@ export default function TimelineEditor({
 
 	const handleItemSpanChange = useCallback(
 		(id: string, span: Span) => {
+			if (id === FACE_ITEM_ID) {
+				onWebcamOffsetChange?.(Math.max(0, Math.round(span.start)));
+				return;
+			}
+			// Face segments aren't drag-resizable (their layout is owned by the cut history),
+			// so we just ignore drag commits on them. Cuts come through onFaceCut.
+			if (id.startsWith("face-seg-")) {
+				return;
+			}
 			// Check if it's a zoom, trim, speed, or annotation item
 			if (zoomRegions.some((r) => r.id === id)) {
 				onZoomSpanChange(id, span);
@@ -1346,6 +1605,7 @@ export default function TimelineEditor({
 			onTrimSpanChange,
 			onSpeedSpanChange,
 			onAnnotationSpanChange,
+			onWebcamOffsetChange,
 		],
 	);
 
@@ -1411,6 +1671,21 @@ export default function TimelineEditor({
 						title={t("buttons.addSpeed")}
 					>
 						<Gauge className="w-4 h-4" />
+					</Button>
+					<Button
+						onClick={() => setBladeMode((prev) => !prev)}
+						variant="ghost"
+						size="icon"
+						aria-pressed={bladeMode}
+						className={cn(
+							"h-7 w-7 transition-all",
+							bladeMode
+								? "text-[#ef4444] bg-[#ef4444]/15 hover:bg-[#ef4444]/25"
+								: "text-slate-400 hover:text-[#ef4444] hover:bg-[#ef4444]/10",
+						)}
+						title={t("buttons.toggleBlade")}
+					>
+						<Slice className="w-4 h-4" />
 					</Button>
 				</div>
 				<div className="flex items-center gap-2">
@@ -1495,6 +1770,16 @@ export default function TimelineEditor({
 						selectedAnnotationId={selectedAnnotationId}
 						selectedSpeedId={selectedSpeedId}
 						keyframes={keyframes}
+						hasFaceVideo={Boolean(webcamVideoPath)}
+						bladeMode={bladeMode}
+						onZoomSplit={onZoomSplit}
+						onTrimSplit={onTrimSplit}
+						onSpeedSplit={onSpeedSplit}
+						onAnnotationSplit={onAnnotationSplit}
+						onTrimAddedFromBlade={onTrimAdded}
+						onFaceCutFromBlade={onFaceCut}
+						selectedFaceSegmentId={selectedFaceSegmentId}
+						onSelectFaceSegment={onSelectFaceSegment}
 					/>
 				</TimelineWrapper>
 			</div>

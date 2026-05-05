@@ -14,6 +14,7 @@ import {
 	DEFAULT_WEBCAM_LAYOUT_PRESET,
 	DEFAULT_WEBCAM_POSITION,
 	DEFAULT_ZOOM_DEPTH,
+	type FaceSegment,
 	type PreviewQuality,
 	type SpeedRegion,
 	type TrimRegion,
@@ -43,9 +44,11 @@ export interface ProjectEditorState {
 	trimRegions: TrimRegion[];
 	speedRegions: SpeedRegion[];
 	annotationRegions: AnnotationRegion[];
+	faceSegments: FaceSegment[];
 	aspectRatio: AspectRatio;
 	webcamLayoutPreset: WebcamLayoutPreset;
 	webcamPosition: WebcamPosition | null;
+	webcamOffsetMs: number;
 	exportQuality: ExportQuality;
 	exportFormat: ExportFormat;
 	gifFrameRate: GifFrameRate;
@@ -211,6 +214,25 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 				})
 		: [];
 
+	const normalizedFaceSegments: FaceSegment[] = Array.isArray(editor.faceSegments)
+		? editor.faceSegments
+				.filter((seg): seg is FaceSegment => Boolean(seg && typeof seg.id === "string"))
+				.map((seg) => {
+					const sourceStart = isFiniteNumber(seg.sourceStartMs) ? Math.round(seg.sourceStartMs) : 0;
+					const sourceEnd = isFiniteNumber(seg.sourceEndMs)
+						? Math.round(seg.sourceEndMs)
+						: sourceStart + 1;
+					const screenStart = isFiniteNumber(seg.screenStartMs) ? Math.round(seg.screenStartMs) : 0;
+					return {
+						id: seg.id,
+						sourceStartMs: Math.max(0, sourceStart),
+						sourceEndMs: Math.max(sourceStart + 1, sourceEnd),
+						screenStartMs: Math.max(0, screenStart),
+					};
+				})
+				.sort((a, b) => a.screenStartMs - b.screenStartMs)
+		: [];
+
 	const normalizedSpeedRegions: SpeedRegion[] = Array.isArray(editor.speedRegions)
 		? editor.speedRegions
 				.filter((region): region is SpeedRegion => Boolean(region && typeof region.id === "string"))
@@ -347,6 +369,7 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 		trimRegions: normalizedTrimRegions,
 		speedRegions: normalizedSpeedRegions,
 		annotationRegions: normalizedAnnotationRegions,
+		faceSegments: normalizedFaceSegments,
 		aspectRatio:
 			editor.aspectRatio && validAspectRatios.has(editor.aspectRatio) ? editor.aspectRatio : "16:9",
 		webcamLayoutPreset:
@@ -364,6 +387,7 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 						cy: clamp((editor.webcamPosition as WebcamPosition).cy, 0, 1),
 					}
 				: DEFAULT_WEBCAM_POSITION,
+		webcamOffsetMs: isFiniteNumber(editor.webcamOffsetMs) ? editor.webcamOffsetMs : 0,
 		exportQuality:
 			editor.exportQuality === "medium" || editor.exportQuality === "source"
 				? editor.exportQuality

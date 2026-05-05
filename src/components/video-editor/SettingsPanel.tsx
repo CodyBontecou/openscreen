@@ -149,6 +149,8 @@ interface SettingsPanelProps {
 	onWebcamLayoutPresetChange?: (preset: WebcamLayoutPreset) => void;
 	onImportFaceVideo?: () => void;
 	onRemoveFaceVideo?: () => void;
+	webcamOffsetMs?: number;
+	onWebcamOffsetChange?: (offsetMs: number) => void;
 }
 
 export default SettingsPanel;
@@ -223,6 +225,8 @@ export function SettingsPanel({
 	onWebcamLayoutPresetChange,
 	onImportFaceVideo,
 	onRemoveFaceVideo,
+	webcamOffsetMs = 0,
+	onWebcamOffsetChange,
 }: SettingsPanelProps) {
 	const t = useScopedT("settings");
 	const [wallpaperPaths, setWallpaperPaths] = useState<string[]>([]);
@@ -668,6 +672,29 @@ export function SettingsPanel({
 											))}
 										</SelectContent>
 									</Select>
+								</div>
+							)}
+							{hasWebcam && onWebcamOffsetChange && (
+								<div className="p-2 rounded-lg bg-white/5 border border-white/5">
+									<label
+										htmlFor="webcam-offset-input"
+										className="block text-[10px] font-medium text-slate-300 mb-1.5"
+									>
+										{t("webcam.offsetSeconds")}
+									</label>
+									<input
+										id="webcam-offset-input"
+										type="number"
+										step={0.05}
+										value={(webcamOffsetMs / 1000).toFixed(2)}
+										onChange={(e) => {
+											const seconds = Number.parseFloat(e.target.value);
+											if (!Number.isNaN(seconds)) {
+												onWebcamOffsetChange(Math.round(seconds * 1000));
+											}
+										}}
+										className="w-full h-8 px-2 rounded-md bg-black/20 border border-white/10 text-xs text-slate-200 tabular-nums focus:outline-none focus:border-[#34B27B]/50"
+									/>
 								</div>
 							)}
 						</AccordionContent>

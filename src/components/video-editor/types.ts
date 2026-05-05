@@ -37,6 +37,13 @@ export interface TrimRegion {
 	endMs: number;
 }
 
+export interface FaceSegment {
+	id: string;
+	sourceStartMs: number;
+	sourceEndMs: number;
+	screenStartMs: number;
+}
+
 export type AnnotationType = "text" | "image" | "figure";
 
 export type ArrowDirection =

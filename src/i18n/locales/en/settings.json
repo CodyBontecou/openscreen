@@ -24,7 +24,8 @@
 		"faceVideo": "Face video",
 		"import": "Import face video",
 		"replace": "Replace face video",
-		"remove": "Remove"
+		"remove": "Remove",
+		"offsetSeconds": "Offset (s)"
 	},
 	"effects": {
 		"title": "Video Effects",

@@ -24,7 +24,8 @@
 		"faceVideo": "人脸视频",
 		"import": "导入人脸视频",
 		"replace": "替换人脸视频",
-		"remove": "移除"
+		"remove": "移除",
+		"offsetSeconds": "偏移（秒）"
 	},
 	"effects": {
 		"title": "视频效果",

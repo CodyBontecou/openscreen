@@ -20,6 +20,7 @@ import {
 	type GifSizePreset,
 	VideoExporter,
 } from "@/lib/exporter";
+import { applyFaceCut } from "@/lib/faceSegments";
 import type { ProjectMedia } from "@/lib/recordingSession";
 import { matchesShortcut } from "@/lib/shortcuts";
 import {
@@ -62,6 +63,8 @@ import {
 } from "./types";
 import VideoPlayback, { VideoPlaybackRef } from "./VideoPlayback";
 
+const BLADE_MIN_HALF_MS = 100;
+
 export default function VideoEditor() {
 	const {
 		state: editorState,
@@ -77,6 +80,7 @@ export default function VideoEditor() {
 		trimRegions,
 		speedRegions,
 		annotationRegions,
+		faceSegments,
 		cropRegion,
 		wallpaper,
 		shadowIntensity,
@@ -87,6 +91,7 @@ export default function VideoEditor() {
 		aspectRatio,
 		webcamLayoutPreset,
 		webcamPosition,
+		webcamOffsetMs,
 	} = editorState;
 
 	// ── Non-undoable state
@@ -94,6 +99,7 @@ export default function VideoEditor() {
 	const [videoSourcePath, setVideoSourcePath] = useState<string | null>(null);
 	const [webcamVideoPath, setWebcamVideoPath] = useState<string | null>(null);
 	const [webcamVideoSourcePath, setWebcamVideoSourcePath] = useState<string | null>(null);
+	const [webcamDurationMs, setWebcamDurationMs] = useState(0);
 	const [currentProjectPath, setCurrentProjectPath] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
@@ -105,6 +111,7 @@ export default function VideoEditor() {
 	const [selectedTrimId, setSelectedTrimId] = useState<string | null>(null);
 	const [selectedSpeedId, setSelectedSpeedId] = useState<string | null>(null);
 	const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
+	const [selectedFaceSegmentId, setSelectedFaceSegmentId] = useState<string | null>(null);
 	const [isExporting, setIsExporting] = useState(false);
 	const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
 	const [exportError, setExportError] = useState<string | null>(null);
@@ -130,6 +137,7 @@ export default function VideoEditor() {
 	const nextZoomIdRef = useRef(1);
 	const nextTrimIdRef = useRef(1);
 	const nextSpeedIdRef = useRef(1);
+	const nextFaceSegmentIdRef = useRef(1);
 
 	const { shortcuts, isMac } = useShortcuts();
 	const t = useScopedT("editor");
@@ -196,9 +204,11 @@ export default function VideoEditor() {
 				trimRegions: normalizedEditor.trimRegions,
 				speedRegions: normalizedEditor.speedRegions,
 				annotationRegions: normalizedEditor.annotationRegions,
+				faceSegments: normalizedEditor.faceSegments,
 				aspectRatio: normalizedEditor.aspectRatio,
 				webcamLayoutPreset: normalizedEditor.webcamLayoutPreset,
 				webcamPosition: normalizedEditor.webcamPosition,
+				webcamOffsetMs: normalizedEditor.webcamOffsetMs,
 			});
 			setExportQuality(normalizedEditor.exportQuality);
 			setPreviewQuality(normalizedEditor.previewQuality);
@@ -211,6 +221,7 @@ export default function VideoEditor() {
 			setSelectedTrimId(null);
 			setSelectedSpeedId(null);
 			setSelectedAnnotationId(null);
+			setSelectedFaceSegmentId(null);
 
 			nextZoomIdRef.current = deriveNextId(
 				"zoom",
@@ -223,6 +234,10 @@ export default function VideoEditor() {
 			nextSpeedIdRef.current = deriveNextId(
 				"speed",
 				normalizedEditor.speedRegions.map((region) => region.id),
+			);
+			nextFaceSegmentIdRef.current = deriveNextId(
+				"face-seg",
+				normalizedEditor.faceSegments.map((seg) => seg.id),
 			);
 			nextAnnotationIdRef.current = deriveNextId(
 				"annotation",
@@ -266,9 +281,11 @@ export default function VideoEditor() {
 				trimRegions,
 				speedRegions,
 				annotationRegions,
+				faceSegments,
 				aspectRatio,
 				webcamLayoutPreset,
 				webcamPosition,
+				webcamOffsetMs,
 				exportQuality,
 				previewQuality,
 				exportFormat,
@@ -290,9 +307,11 @@ export default function VideoEditor() {
 		trimRegions,
 		speedRegions,
 		annotationRegions,
+		faceSegments,
 		aspectRatio,
 		webcamLayoutPreset,
 		webcamPosition,
+		webcamOffsetMs,
 		exportQuality,
 		previewQuality,
 		exportFormat,
@@ -384,9 +403,11 @@ export default function VideoEditor() {
 				trimRegions,
 				speedRegions,
 				annotationRegions,
+				faceSegments,
 				aspectRatio,
 				webcamLayoutPreset,
 				webcamPosition,
+				webcamOffsetMs,
 				exportQuality,
 				previewQuality,
 				exportFormat,
@@ -439,9 +460,11 @@ export default function VideoEditor() {
 			trimRegions,
 			speedRegions,
 			annotationRegions,
+			faceSegments,
 			aspectRatio,
 			webcamLayoutPreset,
 			webcamPosition,
+			webcamOffsetMs,
 			exportQuality,
 			previewQuality,
 			exportFormat,
@@ -456,6 +479,28 @@ export default function VideoEditor() {
 	useEffect(() => {
 		window.electronAPI.setHasUnsavedChanges(hasUnsavedChanges);
 	}, [hasUnsavedChanges]);
+
+	useEffect(() => {
+		if (!webcamVideoPath) {
+			setWebcamDurationMs(0);
+			return;
+		}
+		const probe = document.createElement("video");
+		probe.preload = "metadata";
+		probe.muted = true;
+		probe.src = webcamVideoPath;
+		const handle = () => {
+			if (Number.isFinite(probe.duration)) {
+				setWebcamDurationMs(Math.round(probe.duration * 1000));
+			}
+		};
+		probe.addEventListener("loadedmetadata", handle);
+		return () => {
+			probe.removeEventListener("loadedmetadata", handle);
+			probe.removeAttribute("src");
+			probe.load();
+		};
+	}, [webcamVideoPath]);
 
 	useEffect(() => {
 		const cleanup = window.electronAPI.onRequestSaveBeforeClose(async () => {
@@ -479,12 +524,14 @@ export default function VideoEditor() {
 		}
 		setWebcamVideoSourcePath(result.path);
 		setWebcamVideoPath(toFileUrl(result.path));
-	}, []);
+		pushState({ webcamOffsetMs: 0 });
+	}, [pushState]);
 
 	const handleRemoveFaceVideo = useCallback(() => {
 		setWebcamVideoSourcePath(null);
 		setWebcamVideoPath(null);
-	}, []);
+		pushState({ webcamOffsetMs: 0 });
+	}, [pushState]);
 
 	const handleLoadProject = useCallback(async () => {
 		const result = await window.electronAPI.loadProjectFile();
@@ -587,7 +634,10 @@ export default function VideoEditor() {
 
 	const handleSelectZoom = useCallback((id: string | null) => {
 		setSelectedZoomId(id);
-		if (id) setSelectedTrimId(null);
+		if (id) {
+			setSelectedTrimId(null);
+			setSelectedFaceSegmentId(null);
+		}
 	}, []);
 
 	const handleSelectTrim = useCallback((id: string | null) => {
@@ -595,6 +645,7 @@ export default function VideoEditor() {
 		if (id) {
 			setSelectedZoomId(null);
 			setSelectedAnnotationId(null);
+			setSelectedFaceSegmentId(null);
 		}
 	}, []);
 
@@ -603,8 +654,40 @@ export default function VideoEditor() {
 		if (id) {
 			setSelectedZoomId(null);
 			setSelectedTrimId(null);
+			setSelectedFaceSegmentId(null);
 		}
 	}, []);
+
+	const handleSelectFaceSegment = useCallback((id: string | null) => {
+		setSelectedFaceSegmentId(id);
+		if (id) {
+			setSelectedZoomId(null);
+			setSelectedTrimId(null);
+			setSelectedAnnotationId(null);
+			setSelectedSpeedId(null);
+		}
+	}, []);
+
+	const handleFaceSegmentDelete = useCallback(
+		(id: string) => {
+			pushState((prev) => {
+				const target = prev.faceSegments.find((s) => s.id === id);
+				if (!target) return {};
+				const segLen = target.sourceEndMs - target.sourceStartMs;
+				const removalScreenStart = target.screenStartMs;
+				const next = prev.faceSegments
+					.filter((s) => s.id !== id)
+					.map((s) =>
+						s.screenStartMs > removalScreenStart
+							? { ...s, screenStartMs: s.screenStartMs - segLen }
+							: s,
+					);
+				return { faceSegments: next };
+			});
+			setSelectedFaceSegmentId(null);
+		},
+		[pushState],
+	);
 
 	const handleZoomAdded = useCallback(
 		(span: Span) => {
@@ -667,6 +750,126 @@ export default function VideoEditor() {
 						: region,
 				),
 			}));
+		},
+		[pushState],
+	);
+
+	const handleWebcamOffsetChange = useCallback(
+		(offsetMs: number) => {
+			pushState({ webcamOffsetMs: Math.round(offsetMs) });
+		},
+		[pushState],
+	);
+
+	const handleZoomSplit = useCallback(
+		(id: string, atMs: number) => {
+			const cutMs = Math.round(atMs);
+			pushState((prev) => {
+				const target = prev.zoomRegions.find((r) => r.id === id);
+				if (!target) return {};
+				if (cutMs - target.startMs < BLADE_MIN_HALF_MS) return {};
+				if (target.endMs - cutMs < BLADE_MIN_HALF_MS) return {};
+				const newId = `zoom-${nextZoomIdRef.current++}`;
+				const left: ZoomRegion = { ...target, endMs: cutMs };
+				const right: ZoomRegion = { ...target, id: newId, startMs: cutMs };
+				return {
+					zoomRegions: prev.zoomRegions.flatMap((r) => (r.id === id ? [left, right] : [r])),
+				};
+			});
+		},
+		[pushState],
+	);
+
+	const handleTrimSplit = useCallback(
+		(id: string, atMs: number) => {
+			const cutMs = Math.round(atMs);
+			pushState((prev) => {
+				const target = prev.trimRegions.find((r) => r.id === id);
+				if (!target) return {};
+				if (cutMs - target.startMs < BLADE_MIN_HALF_MS) return {};
+				if (target.endMs - cutMs < BLADE_MIN_HALF_MS) return {};
+				const newId = `trim-${nextTrimIdRef.current++}`;
+				const left: TrimRegion = { ...target, endMs: cutMs };
+				const right: TrimRegion = { ...target, id: newId, startMs: cutMs };
+				return {
+					trimRegions: prev.trimRegions.flatMap((r) => (r.id === id ? [left, right] : [r])),
+				};
+			});
+		},
+		[pushState],
+	);
+
+	const handleSpeedSplit = useCallback(
+		(id: string, atMs: number) => {
+			const cutMs = Math.round(atMs);
+			pushState((prev) => {
+				const target = prev.speedRegions.find((r) => r.id === id);
+				if (!target) return {};
+				if (cutMs - target.startMs < BLADE_MIN_HALF_MS) return {};
+				if (target.endMs - cutMs < BLADE_MIN_HALF_MS) return {};
+				const newId = `speed-${nextSpeedIdRef.current++}`;
+				const left: SpeedRegion = { ...target, endMs: cutMs };
+				const right: SpeedRegion = { ...target, id: newId, startMs: cutMs };
+				return {
+					speedRegions: prev.speedRegions.flatMap((r) => (r.id === id ? [left, right] : [r])),
+				};
+			});
+		},
+		[pushState],
+	);
+
+	const handleFaceCut = useCallback(
+		(span: Span) => {
+			const offset = webcamOffsetMs;
+			const aRel = Math.round(span.start) - offset;
+			const bRel = Math.round(span.end) - offset;
+			if (bRel - aRel < 1) return;
+			pushState((prev) => {
+				const baseSegments =
+					prev.faceSegments.length > 0
+						? prev.faceSegments
+						: webcamDurationMs > 0
+							? [
+									{
+										id: `face-seg-${nextFaceSegmentIdRef.current++}`,
+										sourceStartMs: 0,
+										sourceEndMs: webcamDurationMs,
+										screenStartMs: 0,
+									},
+								]
+							: [];
+				if (baseSegments.length === 0) return {};
+				const nextId = () => `face-seg-${nextFaceSegmentIdRef.current++}`;
+				const nextSegments = applyFaceCut(baseSegments, aRel, bRel, nextId);
+				return { faceSegments: nextSegments };
+			});
+		},
+		[pushState, webcamOffsetMs, webcamDurationMs],
+	);
+
+	const handleAnnotationSplit = useCallback(
+		(id: string, atMs: number) => {
+			const cutMs = Math.round(atMs);
+			pushState((prev) => {
+				const target = prev.annotationRegions.find((r) => r.id === id);
+				if (!target) return {};
+				if (cutMs - target.startMs < BLADE_MIN_HALF_MS) return {};
+				if (target.endMs - cutMs < BLADE_MIN_HALF_MS) return {};
+				const newId = `annotation-${nextAnnotationIdRef.current++}`;
+				const newZIndex = nextAnnotationZIndexRef.current++;
+				const left: AnnotationRegion = { ...target, endMs: cutMs };
+				const right: AnnotationRegion = {
+					...target,
+					id: newId,
+					startMs: cutMs,
+					zIndex: newZIndex,
+				};
+				return {
+					annotationRegions: prev.annotationRegions.flatMap((r) =>
+						r.id === id ? [left, right] : [r],
+					),
+				};
+			});
 		},
 		[pushState],
 	);
@@ -736,6 +939,7 @@ export default function VideoEditor() {
 			setSelectedZoomId(null);
 			setSelectedTrimId(null);
 			setSelectedAnnotationId(null);
+			setSelectedFaceSegmentId(null);
 		}
 	}, []);
 
@@ -1113,6 +1317,9 @@ export default function VideoEditor() {
 						annotationRegions,
 						webcamLayoutPreset,
 						webcamPosition,
+						webcamOffsetMs,
+						webcamSegments: faceSegments,
+						webcamDurationMs,
 						previewWidth,
 						previewHeight,
 						onProgress: (progress: ExportProgress) => {
@@ -1244,6 +1451,9 @@ export default function VideoEditor() {
 						annotationRegions,
 						webcamLayoutPreset,
 						webcamPosition,
+						webcamOffsetMs,
+						webcamSegments: faceSegments,
+						webcamDurationMs,
 						previewWidth,
 						previewHeight,
 						onProgress: (progress: ExportProgress) => {
@@ -1312,6 +1522,9 @@ export default function VideoEditor() {
 			aspectRatio,
 			webcamLayoutPreset,
 			webcamPosition,
+			webcamOffsetMs,
+			faceSegments,
+			webcamDurationMs,
 			exportQuality,
 			handleExportSaved,
 		],
@@ -1496,6 +1709,9 @@ export default function VideoEditor() {
 											webcamVideoPath={webcamVideoPath || undefined}
 											webcamLayoutPreset={webcamLayoutPreset}
 											webcamPosition={webcamPosition}
+											webcamOffsetMs={webcamOffsetMs}
+											webcamSegments={faceSegments}
+											webcamDurationMs={webcamDurationMs}
 											onWebcamPositionChange={(pos) => updateState({ webcamPosition: pos })}
 											onWebcamPositionDragEnd={commitState}
 											onDurationChange={setDuration}
@@ -1596,6 +1812,19 @@ export default function VideoEditor() {
 													: webcamLayoutPreset,
 										});
 									}}
+									webcamVideoPath={webcamVideoPath}
+									webcamDurationMs={webcamDurationMs}
+									webcamOffsetMs={webcamOffsetMs}
+									onWebcamOffsetChange={handleWebcamOffsetChange}
+									onZoomSplit={handleZoomSplit}
+									onTrimSplit={handleTrimSplit}
+									onSpeedSplit={handleSpeedSplit}
+									onAnnotationSplit={handleAnnotationSplit}
+									faceSegments={faceSegments}
+									onFaceCut={handleFaceCut}
+									selectedFaceSegmentId={selectedFaceSegmentId}
+									onSelectFaceSegment={handleSelectFaceSegment}
+									onFaceSegmentDelete={handleFaceSegmentDelete}
 								/>
 							</div>
 						</Panel>
@@ -1642,6 +1871,8 @@ export default function VideoEditor() {
 						}
 						onImportFaceVideo={handleImportFaceVideo}
 						onRemoveFaceVideo={handleRemoveFaceVideo}
+						webcamOffsetMs={webcamOffsetMs}
+						onWebcamOffsetChange={handleWebcamOffsetChange}
 						videoElement={videoPlaybackRef.current?.video || null}
 						exportQuality={exportQuality}
 						onExportQualityChange={setExportQuality}

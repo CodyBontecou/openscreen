@@ -1,6 +1,7 @@
 import type {
 	AnnotationRegion,
 	CropRegion,
+	FaceSegment,
 	SpeedRegion,
 	TrimRegion,
 	WebcamLayoutPreset,
@@ -33,6 +34,9 @@ interface VideoExporterConfig extends ExportConfig {
 	cropRegion: CropRegion;
 	webcamLayoutPreset?: WebcamLayoutPreset;
 	webcamPosition?: { cx: number; cy: number } | null;
+	webcamOffsetMs?: number;
+	webcamSegments?: FaceSegment[];
+	webcamDurationMs?: number;
 	annotationRegions?: AnnotationRegion[];
 	previewWidth?: number;
 	previewHeight?: number;
@@ -163,6 +167,22 @@ export class VideoExporter {
 			console.log("[VideoExporter] Using streaming decode (web-demuxer + VideoDecoder)");
 
 			const frameDuration = 1_000_000 / this.config.frameRate;
+			const frameDurationMs = 1000 / this.config.frameRate;
+			const webcamOffsetMs = this.config.webcamOffsetMs ?? 0;
+			const faceSegments: FaceSegment[] =
+				this.config.webcamSegments && this.config.webcamSegments.length > 0
+					? this.config.webcamSegments
+					: (this.config.webcamDurationMs ?? 0) > 0
+						? [
+								{
+									id: "face-virtual",
+									sourceStartMs: 0,
+									sourceEndMs: this.config.webcamDurationMs ?? 0,
+									screenStartMs: 0,
+								},
+							]
+						: [];
+			let consumedFaceIdx = -1;
 			let frameIndex = 0;
 			const maxEncodeQueue =
 				encoderPreference === "prefer-software"
@@ -175,21 +195,16 @@ export class VideoExporter {
 					? (() => {
 							const queue = webcamFrameQueue;
 							return webcamDecoder
-								.decodeAll(
-									this.config.frameRate,
-									this.config.trimRegions,
-									this.config.speedRegions,
-									async (webcamFrame) => {
-										while (queue.length >= 12 && !this.cancelled && !stopWebcamDecode) {
-											await new Promise((resolve) => setTimeout(resolve, 2));
-										}
-										if (this.cancelled || stopWebcamDecode) {
-											webcamFrame.close();
-											return;
-										}
-										queue.enqueue(webcamFrame);
-									},
-								)
+								.decodeAll(this.config.frameRate, undefined, undefined, async (webcamFrame) => {
+									while (queue.length >= 12 && !this.cancelled && !stopWebcamDecode) {
+										await new Promise((resolve) => setTimeout(resolve, 2));
+									}
+									if (this.cancelled || stopWebcamDecode) {
+										webcamFrame.close();
+										return;
+									}
+									queue.enqueue(webcamFrame);
+								})
 								.catch((error) => {
 									webcamDecodeError = error instanceof Error ? error : new Error(String(error));
 									throw webcamDecodeError;
@@ -220,7 +235,36 @@ export class VideoExporter {
 						}
 
 						const timestamp = frameIndex * frameDuration;
-						webcamFrame = webcamFrameQueue ? await webcamFrameQueue.dequeue() : null;
+						if (webcamFrameQueue) {
+							const outputMs = frameIndex * frameDurationMs;
+							const tRel = outputMs - webcamOffsetMs;
+							const seg =
+								faceSegments.find(
+									(s) =>
+										tRel >= s.screenStartMs &&
+										tRel < s.screenStartMs + (s.sourceEndMs - s.sourceStartMs),
+								) ?? null;
+							if (!seg) {
+								webcamFrame = null;
+							} else {
+								const sourceMs = seg.sourceStartMs + (tRel - seg.screenStartMs);
+								const wantFaceIdx = Math.round(sourceMs / frameDurationMs);
+								while (consumedFaceIdx + 1 < wantFaceIdx) {
+									const skipped = await webcamFrameQueue.dequeue();
+									if (skipped) skipped.close();
+									consumedFaceIdx++;
+									if (this.cancelled) return;
+								}
+								if (consumedFaceIdx + 1 === wantFaceIdx) {
+									webcamFrame = await webcamFrameQueue.dequeue();
+									consumedFaceIdx++;
+								} else {
+									webcamFrame = null;
+								}
+							}
+						} else {
+							webcamFrame = null;
+						}
 						if (this.cancelled) {
 							return;
 						}

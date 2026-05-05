@@ -1,6 +1,6 @@
 import type { Span } from "dnd-timeline";
 import { useItem } from "dnd-timeline";
-import { Gauge, MessageSquare, Scissors, ZoomIn } from "lucide-react";
+import { Camera, Gauge, MessageSquare, Scissors, ZoomIn } from "lucide-react";
 import { useMemo } from "react";
 import { cn } from "@/lib/utils";
 import glassStyles from "./ItemGlass.module.css";
@@ -14,7 +14,9 @@ interface ItemProps {
 	onSelect?: () => void;
 	zoomDepth?: number;
 	speedValue?: number;
-	variant?: "zoom" | "trim" | "annotation" | "speed";
+	variant?: "zoom" | "trim" | "annotation" | "speed" | "face";
+	bladeMode?: boolean;
+	onBladeSplit?: (atMs: number) => void;
 }
 
 // Map zoom depth to multiplier labels
@@ -46,6 +48,8 @@ export default function Item({
 	zoomDepth = 1,
 	speedValue,
 	variant = "zoom",
+	bladeMode = false,
+	onBladeSplit,
 	children,
 }: ItemProps) {
 	const { setNodeRef, attributes, listeners, itemStyle, itemContentStyle } = useItem({
@@ -57,6 +61,7 @@ export default function Item({
 	const isZoom = variant === "zoom";
 	const isTrim = variant === "trim";
 	const isSpeed = variant === "speed";
+	const isFace = variant === "face";
 
 	const glassClass = isZoom
 		? glassStyles.glassGreen
@@ -64,9 +69,19 @@ export default function Item({
 			? glassStyles.glassRed
 			: isSpeed
 				? glassStyles.glassAmber
-				: glassStyles.glassYellow;
+				: isFace
+					? glassStyles.glassBlue
+					: glassStyles.glassYellow;
 
-	const endCapColor = isZoom ? "#21916A" : isTrim ? "#ef4444" : isSpeed ? "#d97706" : "#B4A046";
+	const endCapColor = isZoom
+		? "#21916A"
+		: isTrim
+			? "#ef4444"
+			: isSpeed
+				? "#d97706"
+				: isFace
+					? "#3b82f6"
+					: "#B4A046";
 
 	const timeLabel = useMemo(
 		() => `${formatMs(span.start)} – ${formatMs(span.end)}`,
@@ -79,13 +94,33 @@ export default function Item({
 	const MIN_ITEM_PX = 6;
 	const safeItemStyle = { ...itemStyle, minWidth: MIN_ITEM_PX };
 
+	const bladeActive = bladeMode && variant !== "face";
+
+	const handlePointerDownCapture = (e: React.PointerEvent<HTMLDivElement>) => {
+		if (bladeActive && onBladeSplit) {
+			const rect = e.currentTarget.getBoundingClientRect();
+			if (rect.width > 0) {
+				const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+				const atMs = span.start + ratio * (span.end - span.start);
+				onBladeSplit(atMs);
+			}
+			e.preventDefault();
+			e.stopPropagation();
+			return;
+		}
+		onSelect?.();
+	};
+
 	return (
 		<div
 			ref={setNodeRef}
-			style={safeItemStyle}
-			{...listeners}
-			{...attributes}
-			onPointerDownCapture={() => onSelect?.()}
+			style={{
+				...safeItemStyle,
+				cursor: bladeActive ? "crosshair" : safeItemStyle.cursor,
+			}}
+			{...(bladeActive ? {} : listeners)}
+			{...(bladeActive ? {} : attributes)}
+			onPointerDownCapture={handlePointerDownCapture}
 			className="group"
 		>
 			<div style={{ ...itemContentStyle, minWidth: 24 }}>
@@ -101,28 +136,32 @@ export default function Item({
 						onSelect?.();
 					}}
 				>
-					<div
-						className={cn(glassStyles.zoomEndCap, glassStyles.left)}
-						style={{
-							cursor: "col-resize",
-							pointerEvents: "auto",
-							width: 8,
-							opacity: 0.9,
-							background: endCapColor,
-						}}
-						title="Resize left"
-					/>
-					<div
-						className={cn(glassStyles.zoomEndCap, glassStyles.right)}
-						style={{
-							cursor: "col-resize",
-							pointerEvents: "auto",
-							width: 8,
-							opacity: 0.9,
-							background: endCapColor,
-						}}
-						title="Resize right"
-					/>
+					{!isFace && (
+						<>
+							<div
+								className={cn(glassStyles.zoomEndCap, glassStyles.left)}
+								style={{
+									cursor: "col-resize",
+									pointerEvents: "auto",
+									width: 8,
+									opacity: 0.9,
+									background: endCapColor,
+								}}
+								title="Resize left"
+							/>
+							<div
+								className={cn(glassStyles.zoomEndCap, glassStyles.right)}
+								style={{
+									cursor: "col-resize",
+									pointerEvents: "auto",
+									width: 8,
+									opacity: 0.9,
+									background: endCapColor,
+								}}
+								title="Resize right"
+							/>
+						</>
+					)}
 					{/* Content */}
 					<div className="relative z-10 flex flex-col items-center justify-center text-white/90 opacity-80 group-hover:opacity-100 transition-opacity select-none overflow-hidden">
 						<div className="flex items-center gap-1.5">
@@ -145,6 +184,13 @@ export default function Item({
 									<Gauge className="w-3.5 h-3.5 shrink-0" />
 									<span className="text-[11px] font-semibold tracking-tight whitespace-nowrap">
 										{speedValue !== undefined ? `${speedValue}×` : "Speed"}
+									</span>
+								</>
+							) : isFace ? (
+								<>
+									<Camera className="w-3.5 h-3.5 shrink-0" />
+									<span className="text-[11px] font-semibold tracking-tight whitespace-nowrap">
+										{children}
 									</span>
 								</>
 							) : (
