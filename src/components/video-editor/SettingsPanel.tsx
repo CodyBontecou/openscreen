@@ -157,6 +157,8 @@ const ZOOM_DEPTH_OPTIONS: Array<{ depth: ZoomDepth; label: string }> = [
 	{ depth: 4, label: "2.2×" },
 	{ depth: 5, label: "3.5×" },
 	{ depth: 6, label: "5×" },
+	{ depth: 7, label: "6.5×" },
+	{ depth: 8, label: "8×" },
 ];
 
 export function SettingsPanel({
@@ -479,7 +481,7 @@ export function SettingsPanel({
 							<KeyboardShortcutsHelp />
 						</div>
 					</div>
-					<div className="grid grid-cols-6 gap-1.5">
+					<div className="grid grid-cols-4 gap-1.5">
 						{ZOOM_DEPTH_OPTIONS.map((option) => {
 							const isActive = selectedZoomDepth === option.depth;
 							return (

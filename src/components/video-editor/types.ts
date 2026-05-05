@@ -1,6 +1,6 @@
 import type { WebcamLayoutPreset } from "@/lib/compositeLayout";
 
-export type ZoomDepth = 1 | 2 | 3 | 4 | 5 | 6;
+export type ZoomDepth = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 export type { WebcamLayoutPreset };
 
 export const DEFAULT_WEBCAM_LAYOUT_PRESET: WebcamLayoutPreset = "picture-in-picture";
@@ -162,6 +162,8 @@ export const ZOOM_DEPTH_SCALES: Record<ZoomDepth, number> = {
 	4: 2.2,
 	5: 3.5,
 	6: 5.0,
+	7: 6.5,
+	8: 8.0,
 };
 
 export const DEFAULT_ZOOM_DEPTH: ZoomDepth = 3;
